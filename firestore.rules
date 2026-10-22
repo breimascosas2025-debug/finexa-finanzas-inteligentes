@@ -1,0 +1,27 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // 1. Regla global predeterminada: denegar todo
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Validación segura de identificador alfanumérico
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    // Colección de finanzas de usuario para sincronización multidispositivo (PC <-> Celular)
+    match /user_financials/{userKey} {
+      // Permitir obtener el documento individual
+      allow get: if isValidId(userKey);
+
+      // Prohibir consultas list (para evitar enumeración de cuentas)
+      allow list: if false;
+
+      // Permitir guardar y actualizar sus datos financieros y PIN de seguridad
+      allow write: if isValidId(userKey);
+    }
+  }
+}

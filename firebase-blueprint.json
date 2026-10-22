@@ -1,0 +1,48 @@
+{
+  "entities": {
+    "UserFinancials": {
+      "title": "User Financials",
+      "description": "Datos financieros sincronizados en la nube por usuario (cuentas, transacciones, deudas y configuración)",
+      "type": "object",
+      "properties": {
+        "email": {
+          "type": "string",
+          "maxLength": 100,
+          "description": "Correo electrónico del usuario"
+        },
+        "lastUpdated": {
+          "type": "string",
+          "maxLength": 50,
+          "description": "Marca de tiempo ISO de la última sincronización"
+        },
+        "accounts": {
+          "type": "array",
+          "description": "Lista de cuentas financieras y balances"
+        },
+        "transactions": {
+          "type": "array",
+          "description": "Historial de transacciones de ingresos, gastos y transferencias"
+        },
+        "debts": {
+          "type": "array",
+          "description": "Lista de deudas registradas y compromisos"
+        },
+        "security": {
+          "type": "object",
+          "description": "Configuración de seguridad y PIN"
+        },
+        "profile": {
+          "type": "object",
+          "description": "Perfil del usuario (nombre, avatar)"
+        }
+      },
+      "required": ["email", "lastUpdated", "accounts", "transactions", "debts"]
+    }
+  },
+  "firestore": {
+    "/user_financials/{userKey}": {
+      "schema": "UserFinancials",
+      "description": "Documento con los datos financieros sincronizados del usuario identificado por userKey"
+    }
+  }
+}

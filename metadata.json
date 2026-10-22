@@ -1,0 +1,10 @@
+{
+  "name": "Finexa - Finanzas Inteligentes",
+  "description": "Gestión financiera manual y conectada en colones (₡) para Costa Rica. Control de cuentas y fuentes de dinero, ingresos, gastos por cuenta, deudas con amortización, diezmos y seguridad con PIN.",
+  "requestFramePermissions": [
+    "camera"
+  ],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

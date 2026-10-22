@@ -1,0 +1,26 @@
+{
+  "id": "/",
+  "name": "Finexa - Finanzas Inteligentes",
+  "short_name": "Finexa",
+  "description": "Gestión financiera manual y conectada en colones (₡) para Costa Rica",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#0f131c",
+  "theme_color": "#0f131c",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "/finexa-logo.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icon.svg",
+      "sizes": "192x192 512x512",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}

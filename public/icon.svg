@@ -1,0 +1,109 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 500 500" width="100%" height="100%">
+  <defs>
+    <!-- Background Gradient -->
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0a1224" />
+      <stop offset="50%" stop-color="#070c17" />
+      <stop offset="100%" stop-color="#04070d" />
+    </linearGradient>
+
+    <!-- Blue/Cyan Ribbon Gradients for F -->
+    <linearGradient id="ribbonTop" x1="0%" y1="0%" x2="100%" y2="50%">
+      <stop offset="0%" stop-color="#0066ff" />
+      <stop offset="50%" stop-color="#00aaff" />
+      <stop offset="100%" stop-color="#00e5ff" />
+    </linearGradient>
+
+    <linearGradient id="ribbonBack" x1="0%" y1="0%" x2="50%" y2="100%">
+      <stop offset="0%" stop-color="#0099ff" />
+      <stop offset="60%" stop-color="#0052cc" />
+      <stop offset="100%" stop-color="#003399" />
+    </linearGradient>
+
+    <linearGradient id="ribbonStem" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0055ff" />
+      <stop offset="50%" stop-color="#0077ff" />
+      <stop offset="100%" stop-color="#00bfff" />
+    </linearGradient>
+
+    <linearGradient id="ribbonMid" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#0055dd" />
+      <stop offset="100%" stop-color="#33ccff" />
+    </linearGradient>
+
+    <!-- Emerald Growth Bars Gradient -->
+    <linearGradient id="barGrad" x1="0%" y1="100%" x2="0%" y2="0%">
+      <stop offset="0%" stop-color="#00b074" />
+      <stop offset="100%" stop-color="#00f59b" />
+    </linearGradient>
+
+    <linearGradient id="arrowGrad" x1="0%" y1="100%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#00c87f" />
+      <stop offset="100%" stop-color="#2bffa8" />
+    </linearGradient>
+
+    <!-- Cyan X Glow -->
+    <linearGradient id="xGlow" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#00c8ff" />
+      <stop offset="100%" stop-color="#0077ff" />
+    </linearGradient>
+
+    <!-- Drop Shadow Filters -->
+    <filter id="shadowF" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="12" stdDeviation="16" flood-color="#0066ff" flood-opacity="0.35" />
+    </filter>
+
+    <filter id="shadowGreen" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="4" stdDeviation="8" flood-color="#00f59b" flood-opacity="0.4" />
+    </filter>
+  </defs>
+
+  <!-- Deep dark luxury background -->
+  <rect width="500" height="500" rx="100" fill="url(#bgGrad)" />
+
+  <!-- EMBLEM: THE STYLIZED 'F' WITH GROWTH BARS -->
+  <g transform="translate(45, 30)" filter="url(#shadowF)">
+    <!-- Top folded ribbon curve of F -->
+    <path d="M 110 90 C 130 50, 200 35, 275 35 C 315 35, 335 48, 320 80 C 300 115, 260 120, 200 120 C 165 120, 130 115, 110 90 Z" fill="url(#ribbonTop)" />
+
+    <!-- Big curving upper outer spine -->
+    <path d="M 120 70 C 180 30, 280 25, 325 50 C 300 100, 240 120, 160 120 C 110 120, 80 160, 80 230 C 80 290, 100 320, 150 320 L 95 320 C 60 320, 45 285, 45 220 C 45 140, 70 85, 120 70 Z" fill="url(#ribbonBack)" />
+
+    <!-- Inner main blue ribbon hook forming the F -->
+    <path d="M 85 180 C 110 135, 175 125, 280 125 C 295 125, 305 133, 300 148 C 290 175, 260 180, 210 180 L 115 180 C 95 200, 95 270, 140 270 L 125 315 C 70 315, 55 240, 85 180 Z" fill="url(#ribbonStem)" />
+
+    <!-- Middle bar of F -->
+    <path d="M 115 170 C 170 170, 250 168, 290 170 C 300 170, 305 180, 295 195 C 280 220, 240 220, 185 220 L 115 220 Z" fill="url(#ribbonMid)" opacity="0.95" />
+
+    <!-- 3 ASCENDING FINANCIAL GROWTH BARS (Green / Turquoise) -->
+    <!-- Bar 1 (Shortest) -->
+    <rect x="135" y="250" width="28" height="60" rx="8" fill="url(#barGrad)" filter="url(#shadowGreen)" />
+    <!-- Bar 2 (Medium) -->
+    <rect x="175" y="230" width="28" height="80" rx="8" fill="url(#barGrad)" filter="url(#shadowGreen)" />
+    <!-- Bar 3 (Tallest) -->
+    <rect x="215" y="210" width="28" height="100" rx="8" fill="url(#barGrad)" filter="url(#shadowGreen)" />
+
+    <!-- Dynamic upward trend arrow swoop -->
+    <path d="M 120 255 C 160 250, 210 230, 250 175 L 235 175 L 265 145 L 268 185 L 255 185 C 220 235, 165 260, 120 265 Z" fill="url(#arrowGrad)" filter="url(#shadowGreen)" />
+  </g>
+
+  <!-- TEXT TYPOGRAPHY: FINEXA -->
+  <g transform="translate(60, 420)">
+    <!-- F -->
+    <text x="0" y="0" font-family="'Plus Jakarta Sans', system-ui, -apple-system, sans-serif" font-weight="900" font-size="78" fill="#ffffff" letter-spacing="-1">F</text>
+    <!-- i -->
+    <circle cx="58" cy="-56" r="6.5" fill="#ffffff" />
+    <rect x="52" y="-40" width="13" height="40" rx="4" fill="#ffffff" />
+    <!-- n -->
+    <text x="80" y="0" font-family="'Plus Jakarta Sans', system-ui, -apple-system, sans-serif" font-weight="800" font-size="78" fill="#ffffff" letter-spacing="-1">n</text>
+    <!-- e -->
+    <text x="145" y="0" font-family="'Plus Jakarta Sans', system-ui, -apple-system, sans-serif" font-weight="800" font-size="78" fill="#ffffff" letter-spacing="-1">e</text>
+    <!-- x with Cyan Ribbon Crossover -->
+    <!-- Left-to-right white arm -->
+    <path d="M 205 -40 L 255 0 L 240 0 L 190 -40 Z" fill="#ffffff" />
+    <!-- Right-to-left glowing cyan ribbon crossover -->
+    <path d="M 245 -40 L 195 0 L 210 0 L 260 -40 Z" fill="url(#xGlow)" filter="url(#shadowF)" />
+    <!-- a -->
+    <text x="270" y="0" font-family="'Plus Jakarta Sans', system-ui, -apple-system, sans-serif" font-weight="800" font-size="78" fill="#ffffff" letter-spacing="-1">a</text>
+  </g>
+</svg>
