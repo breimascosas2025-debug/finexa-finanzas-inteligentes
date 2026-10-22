@@ -1,4 +1,5 @@
 import { DebtItem, SubscriptionItem } from '../types';
+import { PRIMARY_GOOGLE_CLIENT_ID } from './googleAuthService';
 
 export interface CalendarEventPayload {
   summary: string;
@@ -48,11 +49,16 @@ export const DEFAULT_CALENDAR_SCOPES = [
 export function getStoredCalendarConfig(): GoogleCalendarOAuthConfig {
   try {
     const raw = localStorage.getItem('finexa_google_calendar_oauth_config');
-    if (raw) return JSON.parse(raw);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (parsed.clientId && !parsed.clientId.includes('gen-lang-client')) {
+        return parsed;
+      }
+    }
   } catch {}
 
   return {
-    clientId: 'gen-lang-client-0349977218.apps.googleusercontent.com',
+    clientId: PRIMARY_GOOGLE_CLIENT_ID,
     redirectUri: typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3000',
     scopes: DEFAULT_CALENDAR_SCOPES,
   };

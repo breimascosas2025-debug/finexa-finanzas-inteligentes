@@ -12,7 +12,7 @@ const __dirname = path.dirname(__filename);
 function getResolvedModel(): string {
   const envModel = (process.env.NVIDIA_MODEL || '').trim().replace(/^["']|["']$/g, '');
   if (!envModel || envModel === 'glm-5-3' || envModel === 'glm-5.3' || envModel === 'Finexa-Plus') {
-    return 'z-ai/glm-5.3';
+    return 'meta/llama-3.3-70b-instruct';
   }
   return envModel;
 }

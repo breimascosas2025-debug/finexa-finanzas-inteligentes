@@ -20,6 +20,7 @@ import {
   NvidiaAiConfig,
 } from '../../services/nvidiaAiService';
 import { signInWithGoogleCalendar, setCachedCalendarToken, getCachedCalendarToken } from '../../lib/firebase';
+import { disconnectGoogleSession } from '../../services/googleAuthService';
 import { isPasskeySupported, getStoredPasskeys } from '../../services/webauthnService';
 import { SiriOrb } from '../SiriOrb';
 
@@ -168,7 +169,7 @@ export const PerfilView: React.FC<PerfilViewProps> = ({
   };
 
   const handleDisconnectCalendar = () => {
-    setCachedCalendarToken(null);
+    disconnectGoogleSession();
     setCalendarToken(null);
     setCalendarConnected(false);
     setCalendarList([]);
@@ -658,18 +659,14 @@ export const PerfilView: React.FC<PerfilViewProps> = ({
                   </span>
                 </div>
                 <p className="text-[10px] text-[#86948a]">
-                  Asesor financiero inteligente con respuestas en streaming y privacidad total
+                  Asesor financiero inteligente con respuestas inmediatas y privacidad total
                 </p>
               </div>
             </div>
-
-            <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
-              ACTIVO
-            </span>
           </div>
 
           <p className="text-[10px] text-[#86948a]">
-            Finexa Plus analiza tus ingresos, gastos, saldos disponibles y deudas para responder tus dudas con datos reales autorizados.
+            Finexa Plus analiza tus ingresos, gastos, saldos disponibles y deudas para responder tus dudas con datos reales autorizados. Clave gestionada de forma 100% segura en Vercel.
           </p>
 
           {/* Botón directo para abrir el asistente */}

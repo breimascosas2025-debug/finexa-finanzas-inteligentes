@@ -5,6 +5,7 @@ import {
   getCachedCalendarToken,
   setCachedCalendarToken,
 } from '../lib/firebase';
+import { disconnectGoogleSession } from '../services/googleAuthService';
 import {
   syncDebtReminderToGoogle,
   syncSubscriptionReminderToGoogle,
@@ -81,7 +82,7 @@ export const CalendarSyncModal: React.FC<CalendarSyncModalProps> = ({
   };
 
   const handleDisconnectGoogleCalendar = () => {
-    setCachedCalendarToken(null);
+    disconnectGoogleSession();
     setCalendarToken(null);
     setUserGoogleEmail(null);
     setSuccessMessage('Sesión de Google Calendar desconectada.');

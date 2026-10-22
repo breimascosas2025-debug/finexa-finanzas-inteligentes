@@ -39,12 +39,6 @@ export const FinexaPlusAssistantModal: React.FC<FinexaPlusAssistantModalProps> =
   dollarRates = { buy: 505, sell: 512 },
   budgetConfig,
 }) => {
-  const [config, setConfig] = useState<NvidiaAiConfig>(getStoredNvidiaConfig());
-  const [showConfigPanel, setShowConfigPanel] = useState(false);
-  const [apiKeyInput, setApiKeyInput] = useState(config.apiKey || '');
-  const [isTestingKey, setIsTestingKey] = useState(false);
-  const [keyFeedback, setKeyFeedback] = useState<string | null>(null);
-
   const [messages, setMessages] = useState<Message[]>(() => {
     try {
       const saved = localStorage.getItem('finexa_plus_chat_history');
@@ -79,15 +73,7 @@ export const FinexaPlusAssistantModal: React.FC<FinexaPlusAssistantModalProps> =
   // Verificar estado del servidor privado
   useEffect(() => {
     if (isOpen) {
-      checkServerPrivateAiStatus().then((res) => {
-        if (res.configured) {
-          setConfig((prev) => ({
-            ...prev,
-            status: 'connected',
-            isServerPrivate: true,
-          }));
-        }
-      });
+      checkServerPrivateAiStatus();
     }
   }, [isOpen]);
 
@@ -272,15 +258,12 @@ ${recentTxList || 'Sin transacciones recientes'}
     setIsLoading(false);
 
     if (res.error) {
-      if (res.error.includes('no está configurado') || res.error.includes('servidor')) {
-        setShowConfigPanel(true);
-      }
       setMessages((prev) =>
         prev.map((m) =>
           m.id === aiMsgId
             ? {
                 ...m,
-                text: `🔒 ${res.error}\n\nPara activar Finexa Plus, asegúrate de guardar tu clave en el archivo .env del servidor como NVIDIA_API_KEY="..." o ingresarla en los ajustes del asistente.`,
+                text: `🔒 ${res.error}\n\nPara activar Finexa Plus, asegúrate de configurar la variable NVIDIA_API_KEY en las variables de entorno de tu proyecto en Vercel (Settings > Environment Variables).`,
               }
             : m
         )
@@ -304,32 +287,6 @@ ${recentTxList || 'Sin transacciones recientes'}
       } catch {
         setIsListening(false);
       }
-    }
-  };
-
-  const handleSaveApiKey = async () => {
-    if (!apiKeyInput.trim()) {
-      setKeyFeedback('Ingresa una clave válida.');
-      return;
-    }
-
-    setIsTestingKey(true);
-    setKeyFeedback(null);
-
-    const updated = saveStoredNvidiaConfig({
-      apiKey: apiKeyInput.trim(),
-      displayName: 'Finexa Plus',
-    });
-    setConfig(updated);
-
-    const testRes = await testNvidiaConnection(updated);
-    setIsTestingKey(false);
-
-    if (testRes.success) {
-      setKeyFeedback('¡Conectado exitosamente con Finexa Plus!');
-      setTimeout(() => setShowConfigPanel(false), 1200);
-    } else {
-      setKeyFeedback(testRes.message);
     }
   };
 
@@ -377,14 +334,6 @@ ${recentTxList || 'Sin transacciones recientes'}
           <div className="flex items-center gap-1">
             <button
               type="button"
-              onClick={() => setShowConfigPanel(!showConfigPanel)}
-              title="Configuración de IA"
-              className="w-8 h-8 rounded-xl bg-[#262a33] hover:bg-[#31353e] text-[#86948a] hover:text-white flex items-center justify-center text-xs transition-colors"
-            >
-              <span className="material-symbols-outlined text-[16px]">settings</span>
-            </button>
-            <button
-              type="button"
               onClick={handleClearChat}
               title="Reiniciar chat"
               className="w-8 h-8 rounded-xl bg-[#262a33] hover:bg-[#31353e] text-[#86948a] hover:text-white flex items-center justify-center text-xs transition-colors"
@@ -400,46 +349,6 @@ ${recentTxList || 'Sin transacciones recientes'}
             </button>
           </div>
         </div>
-
-        {/* Panel de Configuración Opcional */}
-        {showConfigPanel && (
-          <div className="p-3.5 bg-[#121620] border-b border-[#3c4a42]/50 space-y-2.5 animate-in fade-in shrink-0">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-bold text-white flex items-center gap-1.5">
-                <span className="material-symbols-outlined text-[16px] text-[#10b981]">key</span>
-                <span>Configuración de Servidor Privado</span>
-              </span>
-              <span className="text-[9px] px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 font-bold">
-                {config.status === 'connected' ? 'Conectado' : 'Pendiente'}
-              </span>
-            </div>
-            <p className="text-[10px] text-[#86948a]">
-              Las consultas se procesan de forma privada en el servidor backend sin exponer credenciales al cliente.
-            </p>
-            <div className="flex gap-2">
-              <input
-                type="password"
-                placeholder="nvapi-... (Opcional si ya está en .env)"
-                value={apiKeyInput}
-                onChange={(e) => setApiKeyInput(e.target.value)}
-                className="flex-1 bg-[#0f131c] border border-[#3c4a42] rounded-xl px-3 py-1.5 text-xs text-white focus:outline-none focus:border-[#10b981]"
-              />
-              <button
-                type="button"
-                disabled={isTestingKey}
-                onClick={handleSaveApiKey}
-                className="px-3.5 py-1.5 rounded-xl bg-[#10b981] text-[#003824] font-bold text-xs shadow active:scale-95 transition-all"
-              >
-                {isTestingKey ? 'Probando...' : 'Guardar y Probar'}
-              </button>
-            </div>
-            {keyFeedback && (
-              <p className={`text-[10px] ${keyFeedback.includes('exitosamente') ? 'text-emerald-400' : 'text-amber-400'}`}>
-                {keyFeedback}
-              </p>
-            )}
-          </div>
-        )}
 
         {/* Chat Feed */}
         <div className="flex-1 overflow-y-auto p-4 space-y-3.5 no-scrollbar">
@@ -537,12 +446,12 @@ ${recentTxList || 'Sin transacciones recientes'}
                 title={isListening ? 'Detener micrófono' : 'Hablar con Finexa Plus'}
                 className={`w-10 h-10 rounded-2xl flex items-center justify-center transition-all ${
                   isListening
-                    ? 'bg-gradient-to-r from-[#ec4899] to-[#f43f5e] text-white animate-pulse shadow-lg shadow-rose-500/30'
+                    ? 'bg-gradient-to-tr from-cyan-400 via-fuchsia-500 to-amber-400 text-white animate-pulse shadow-lg shadow-fuchsia-500/40 ring-2 ring-cyan-400/80'
                     : 'bg-[#262a33] text-[#86948a] hover:text-[#10b981] hover:bg-[#31353e]'
                 }`}
               >
                 <span className="material-symbols-outlined text-[20px]">
-                  {isListening ? 'mic_active' : 'mic'}
+                  {isListening ? 'mic' : 'mic_none'}
                 </span>
               </button>
             )}

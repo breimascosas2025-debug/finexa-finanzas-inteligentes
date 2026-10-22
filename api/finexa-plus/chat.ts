@@ -18,7 +18,7 @@ export default async function handler(req: any, res: any) {
   const endpoint = (process.env.NVIDIA_ENDPOINT || 'https://integrate.api.nvidia.com/v1').replace(/\/$/, '') + '/chat/completions';
   const envModel = (process.env.NVIDIA_MODEL || '').trim().replace(/^["']|["']$/g, '');
   const model = (!envModel || envModel === 'glm-5-3' || envModel === 'glm-5.3' || envModel === 'Finexa-Plus')
-    ? 'z-ai/glm-5.3'
+    ? 'meta/llama-3.3-70b-instruct'
     : envModel;
 
   const systemInstructions = `Eres exclusivamente "Finexa Plus", el asistente personal de finanzas inteligentes de la aplicación Finexa Plus.

@@ -201,12 +201,12 @@ export const TopHeader: React.FC<TopHeaderProps> = ({
             <button
               type="button"
               onClick={onOpenAiAssistant}
-              title="Preguntar a la IA (Finexa-Plus / GLM 5-3)"
+              title="Consultar a Finexa Plus"
               className="relative p-1 rounded-2xl bg-[#262a33]/60 hover:bg-[#31353e] flex items-center gap-1.5 active:scale-95 transition-all group border border-[#00d2ff]/20 hover:border-[#00d2ff]/50 shadow-sm"
             >
               <SiriOrb size={28} />
               <span className="hidden sm:inline text-[11px] font-bold text-transparent bg-clip-text bg-gradient-to-r from-[#00d2ff] via-[#f093fb] to-[#f5576c] pr-1.5">
-                Finexa-Plus
+                Finexa Plus
               </span>
             </button>
           )}

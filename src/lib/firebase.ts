@@ -2,6 +2,12 @@ import { initializeApp } from 'firebase/app';
 import { getAuth, GoogleAuthProvider, signInWithPopup } from 'firebase/auth';
 import { getFirestore } from 'firebase/firestore';
 import firebaseConfig from '../../firebase-applet-config.json';
+import {
+  requestGoogleAccessToken,
+  getCachedGoogleToken,
+  setCachedGoogleToken,
+  GOOGLE_SCOPES,
+} from '../services/googleAuthService';
 
 const app = initializeApp(firebaseConfig);
 export const db = (firebaseConfig as any).firestoreDatabaseId
@@ -9,37 +15,25 @@ export const db = (firebaseConfig as any).firestoreDatabaseId
   : getFirestore(app);
 export const auth = getAuth(app);
 
-// Workspace Calendar OAuth Provider
+// Workspace Calendar & Sheets OAuth Provider
 export const CALENDAR_SCOPE = 'https://www.googleapis.com/auth/calendar.events';
+export const SHEETS_SCOPE = 'https://www.googleapis.com/auth/spreadsheets';
+export const DRIVE_FILE_SCOPE = 'https://www.googleapis.com/auth/drive.file';
+
 const googleProvider = new GoogleAuthProvider();
-googleProvider.addScope(CALENDAR_SCOPE);
+GOOGLE_SCOPES.forEach((scope) => googleProvider.addScope(scope));
 googleProvider.setCustomParameters({
   prompt: 'consent',
   access_type: 'offline',
 });
 
-// In-memory access token cache (NEVER stored in localStorage or sessionStorage per security guidelines)
-let cachedCalendarAccessToken: string | null = null;
-
-export const getCachedCalendarToken = (): string | null => cachedCalendarAccessToken;
+export const getCachedCalendarToken = (): string | null => getCachedGoogleToken();
 export const setCachedCalendarToken = (token: string | null) => {
-  cachedCalendarAccessToken = token;
+  setCachedGoogleToken(token);
 };
 
 export const signInWithGoogleCalendar = async (): Promise<{ token: string; email?: string | null }> => {
-  try {
-    const result = await signInWithPopup(auth, googleProvider);
-    const credential = GoogleAuthProvider.credentialFromResult(result);
-    const token = credential?.accessToken;
-    if (!token) {
-      throw new Error('No se pudo obtener el token de acceso de Google Calendar.');
-    }
-    cachedCalendarAccessToken = token;
-    return { token, email: result.user.email };
-  } catch (err) {
-    console.error('Error al autenticar con Google Calendar:', err);
-    throw err;
-  }
+  return requestGoogleAccessToken({ forcePrompt: false });
 };
 
 export enum OperationType {

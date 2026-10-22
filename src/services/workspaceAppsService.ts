@@ -1,5 +1,6 @@
 import { Account, Transaction, DebtItem, BudgetConfig, SavingsGoal } from '../types';
 import { calculateAccountBalance } from '../utils/finance';
+import { PRIMARY_GOOGLE_CLIENT_ID } from './googleAuthService';
 
 export interface GoogleSheetsConfig {
   clientId: string;
@@ -18,11 +19,16 @@ export const SHEETS_SCOPES = [
 export function getStoredSheetsConfig(): GoogleSheetsConfig {
   try {
     const raw = localStorage.getItem('finexa_google_sheets_config');
-    if (raw) return JSON.parse(raw);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (parsed.clientId && !parsed.clientId.includes('gen-lang-client')) {
+        return parsed;
+      }
+    }
   } catch {}
 
   return {
-    clientId: 'gen-lang-client-0349977218.apps.googleusercontent.com',
+    clientId: PRIMARY_GOOGLE_CLIENT_ID,
     redirectUri: typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3000',
     scopes: SHEETS_SCOPES,
     mode: 'create_new',
