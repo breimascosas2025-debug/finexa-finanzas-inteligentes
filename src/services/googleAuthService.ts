@@ -159,12 +159,14 @@ export async function requestGoogleAccessToken(options?: {
     return { token, email };
   } catch (firebaseErr: any) {
     console.error('[GoogleAuth] Error en autorización con Firebase:', firebaseErr);
-    const msg =
-      firebaseErr?.code === 'auth/popup-blocked'
-        ? 'El navegador bloqueó la ventana emergente de Google. Permite las ventanas emergentes para Finexa.'
-        : firebaseErr?.code === 'auth/popup-closed-by-user'
-        ? 'Autorización cancelada por el usuario.'
-        : firebaseErr?.message || 'Error al conectar con Google.';
+    let msg = firebaseErr?.message || 'Error al conectar con Google.';
+    if (firebaseErr?.code === 'auth/popup-blocked') {
+      msg = 'El navegador bloqueó la ventana emergente de Google. Permite las ventanas emergentes para Finexa.';
+    } else if (firebaseErr?.code === 'auth/popup-closed-by-user') {
+      msg = 'Autorización cancelada por el usuario.';
+    } else if (String(firebaseErr).includes('access_denied') || firebaseErr?.code === 'auth/access-denied') {
+      msg = 'Acceso bloqueado: debes agregar tu correo (breitan2012@gmail.com) en "Usuarios de prueba" (Test users) en la Pantalla de consentimiento de Google Cloud Console.';
+    }
     throw new Error(msg);
   }
 }
