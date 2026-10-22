@@ -9,7 +9,7 @@ export default async function handler(req: any, res: any) {
   return res.status(200).json({
     configured: isConfigured,
     serverPrivateMode: true,
-    model: 'Finexa-Plus',
-    displayName: 'Finexa-Plus',
+    model: 'Finexa Plus',
+    displayName: 'Finexa Plus',
   });
 }

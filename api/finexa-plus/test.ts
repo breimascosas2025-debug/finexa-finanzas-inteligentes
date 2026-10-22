@@ -40,7 +40,7 @@ export default async function handler(req: any, res: any) {
 
     return res.status(200).json({
       success: true,
-      message: '¡Finexa-Plus (GLM 5-3) conectado y listo en modo privado!',
+      message: '¡Finexa Plus conectado y listo para responder consultas en modo privado!',
     });
   } catch (error: any) {
     return res.status(500).json({
