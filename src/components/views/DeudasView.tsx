@@ -2,6 +2,8 @@ import React, { useState } from 'react';
 import { Account, DebtItem, Transaction } from '../../types';
 import { getDebtStatus } from '../../utils/finance';
 import { formatCRC } from '../../utils/formatters';
+import { syncDebtReminderToGoogle } from '../../services/calendarService';
+import { getCachedCalendarToken } from '../../lib/firebase';
 
 interface DeudasViewProps {
   debts: DebtItem[];
@@ -9,6 +11,7 @@ interface DeudasViewProps {
   accounts: Account[];
   onOpenQuickAdd: (mode?: any) => void;
   onDeleteDebt?: (debtId: string) => void;
+  onUpdateDebt?: (debt: DebtItem) => void;
 }
 
 export const DeudasView: React.FC<DeudasViewProps> = ({
@@ -17,8 +20,33 @@ export const DeudasView: React.FC<DeudasViewProps> = ({
   accounts,
   onOpenQuickAdd,
   onDeleteDebt,
+  onUpdateDebt,
 }) => {
   const [filter, setFilter] = useState<'todas' | 'pendientes' | 'pagadas'>('pendientes');
+  const [syncingDebtId, setSyncingDebtId] = useState<string | null>(null);
+  const [syncMessage, setSyncMessage] = useState<string | null>(null);
+
+  const handleSyncCalendar = async (debt: DebtItem) => {
+    const token = getCachedCalendarToken();
+    if (!token) {
+      onOpenQuickAdd('calendario');
+      return;
+    }
+    setSyncingDebtId(debt.id);
+    try {
+      const res = await syncDebtReminderToGoogle(token, debt);
+      if (res?.id && onUpdateDebt) {
+        onUpdateDebt({ ...debt, calendarEventId: res.id });
+      }
+      setSyncMessage(`¡Recordatorio de "${debt.name}" sincronizado con Google Calendar!`);
+      setTimeout(() => setSyncMessage(null), 3500);
+    } catch (err: any) {
+      setSyncMessage(`Error: ${err.message || 'No se pudo sincronizar'}`);
+      setTimeout(() => setSyncMessage(null), 3500);
+    } finally {
+      setSyncingDebtId(null);
+    }
+  };
 
   // Compute total aggregates
   const totalDebtsAmount = debts.reduce((sum, d) => sum + d.totalAmount, 0);
@@ -103,6 +131,13 @@ export const DeudasView: React.FC<DeudasViewProps> = ({
           </div>
         </div>
       </section>
+
+      {syncMessage && (
+        <div className="p-3 rounded-2xl bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 text-xs flex items-center gap-2 animate-in fade-in">
+          <span className="material-symbols-outlined text-[18px]">calendar_month</span>
+          <span>{syncMessage}</span>
+        </div>
+      )}
 
       {/* Filter Tabs */}
       <section className="flex bg-[#181c24] p-1 rounded-2xl border border-[#3c4a42]/30 text-xs">
@@ -239,17 +274,43 @@ export const DeudasView: React.FC<DeudasViewProps> = ({
                     </div>
                   </div>
 
-                  {/* Action button if not fully paid */}
-                  {!status.isPaid && (
-                    <button
-                      type="button"
-                      onClick={() => onOpenQuickAdd('pago_deuda')}
-                      className="w-full py-2 px-3 rounded-xl bg-[#10b981] hover:bg-[#4edea3] text-[#003824] text-xs font-bold flex items-center justify-center gap-1 active:scale-95 transition-all shadow"
-                    >
-                      <span className="material-symbols-outlined text-[16px]">payments</span>
-                      <span>Abonar a esta deuda</span>
-                    </button>
-                  )}
+                  {/* Action buttons */}
+                  <div className="flex gap-2">
+                    {!status.isPaid && (
+                      <button
+                        type="button"
+                        onClick={() => onOpenQuickAdd('pago_deuda')}
+                        className="flex-1 py-2 px-3 rounded-xl bg-[#10b981] hover:bg-[#4edea3] text-[#003824] text-xs font-bold flex items-center justify-center gap-1 active:scale-95 transition-all shadow"
+                      >
+                        <span className="material-symbols-outlined text-[16px]">payments</span>
+                        <span>Abonar</span>
+                      </button>
+                    )}
+                    {debt.dueDate && (
+                      <button
+                        type="button"
+                        disabled={syncingDebtId === debt.id}
+                        onClick={() => handleSyncCalendar(debt)}
+                        title={debt.calendarEventId ? 'Sincronizado en Google Calendar (clic para refrescar)' : 'Agendar recordatorio en Google Calendar'}
+                        className={`py-2 px-3 rounded-xl border text-xs font-bold flex items-center justify-center gap-1.5 transition-all active:scale-95 ${
+                          debt.calendarEventId
+                            ? 'bg-blue-950/40 border-blue-500/40 text-blue-300 hover:bg-blue-900/50'
+                            : 'bg-[#262a33] border-[#3c4a42] text-[#86948a] hover:text-white hover:border-[#10b981]'
+                        } ${!status.isPaid ? 'flex-initial' : 'w-full'}`}
+                      >
+                        <span className={`material-symbols-outlined text-[16px] ${syncingDebtId === debt.id ? 'animate-spin' : ''}`}>
+                          {debt.calendarEventId ? 'event_available' : 'calendar_month'}
+                        </span>
+                        <span className="text-[11px]">
+                          {syncingDebtId === debt.id
+                            ? 'Sincronizando...'
+                            : debt.calendarEventId
+                            ? 'Calendar listo'
+                            : 'Agendar'}
+                        </span>
+                      </button>
+                    )}
+                  </div>
 
                   {/* Payments history for this debt */}
                   {payments.length > 0 && (

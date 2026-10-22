@@ -17,7 +17,9 @@ import { PrivacyTermsModal } from './components/PrivacyTermsModal';
 import { PermissionsModal } from './components/PermissionsModal';
 import { getAppNotifications } from './utils/finance';
 import { getNotificationPermission, requestNotificationPermission, triggerFinancialAlerts } from './utils/systemNotifications';
-import { fetchUserFinancialsFromCloud, saveUserFinancialsToCloud, subscribeToUserFinancials, SyncStatus } from './services/cloudSyncService';
+import { fetchUserFinancialsFromCloud, saveUserFinancialsToCloud, subscribeToUserFinancials, mergeFinancialData, SyncStatus } from './services/cloudSyncService';
+import { syncDebtReminderToGoogle, cancelDebtReminderFromGoogle } from './services/calendarService';
+import { getCachedCalendarToken } from './lib/firebase';
 import { ChangelogUpdateModal } from './components/ChangelogUpdateModal';
 import { InitialOnboardingView } from './components/InitialOnboardingView';
 import { FinexaPlusAssistantModal } from './components/FinexaPlusAssistantModal';
@@ -137,55 +139,20 @@ export default function App() {
   const isRemoteUpdatingRef = React.useRef(false);
   const hasInitializedCloudRef = React.useRef(false);
 
-  // Sincronización en la Nube Multidispositivo (PC <-> Celular) en tiempo real
+  // Sincronización en la Nube Multidispositivo (PC <-> Celular <-> Tablet) en tiempo real
   useEffect(() => {
     if (!user?.email) return;
 
     setSyncStatus('syncing');
 
-    // 1. Carga inicial desde la nube para hidratar si se abre en un dispositivo nuevo (ej: compu)
+    // 1. Carga inicial desde la nube con fusión inteligente (merge) sin pérdidas de datos
     fetchUserFinancialsFromCloud(user.email)
       .then(async (remote) => {
-        const localBalance = accounts.reduce((sum, a) => sum + (Number(a.initialBalance) || 0), 0);
-        const remoteBalance = remote?.accounts
-          ? remote.accounts.reduce((sum, a) => sum + (Number(a.initialBalance) || 0), 0)
-          : 0;
-
-        console.log('[CloudSync Init] Estado:', {
-          email: user.email,
-          localBalance,
-          localAccounts: accounts.length,
-          remoteBalance,
-          remoteAccounts: remote?.accounts?.length || 0,
-        });
-
         if (remote && (remote.accounts.length > 0 || remote.transactions.length > 0 || remote.debts.length > 0 || (remote.savingsGoals && remote.savingsGoals.length > 0) || remote.budgetConfig || (remote.subscriptions && remote.subscriptions.length > 0))) {
-          // Si el local tiene 0 (como en la PC) o la nube tiene mayor o igual saldo, adoptar la nube
-          if (localBalance === 0 || remoteBalance >= localBalance) {
-            isRemoteUpdatingRef.current = true;
-            setAccounts(remote.accounts);
-            setTransactions(remote.transactions);
-            setDebts(remote.debts);
-            if (remote.savingsGoals) setSavingsGoals(remote.savingsGoals);
-            if (remote.budgetConfig) setBudgetConfig(remote.budgetConfig);
-            if (remote.subscriptions) setSubscriptions(remote.subscriptions);
-            if (remote.householdConfig) setHouseholdConfig(remote.householdConfig);
-            if (remote.security) setSecurity(remote.security);
-            saveUserDataToStorage(user.email, {
-              accounts: remote.accounts,
-              transactions: remote.transactions,
-              debts: remote.debts,
-              savingsGoals: remote.savingsGoals || [],
-              budgetConfig: remote.budgetConfig || budgetConfig,
-              subscriptions: remote.subscriptions || subscriptions,
-              householdConfig: remote.householdConfig || householdConfig,
-              security: remote.security,
-            });
-            setSyncStatus('synced');
-          } else {
-            // El local tiene saldo mayor (ej: celular con los 23 mil), subir a la nube
-            console.log('[CloudSync Init] Subiendo datos locales con saldo a la nube...');
-            await saveUserFinancialsToCloud(user.email, {
+          // Fusionar de forma limpia con los datos locales
+          const merged = mergeFinancialData(
+            {
+              email: user.email,
               accounts,
               transactions,
               debts,
@@ -195,12 +162,36 @@ export default function App() {
               householdConfig,
               security,
               profile: user,
-            });
-            setSyncStatus('synced');
-          }
+            },
+            remote
+          );
+
+          isRemoteUpdatingRef.current = true;
+          setAccounts(merged.accounts);
+          setTransactions(merged.transactions);
+          setDebts(merged.debts);
+          if (merged.savingsGoals) setSavingsGoals(merged.savingsGoals);
+          if (merged.budgetConfig) setBudgetConfig(merged.budgetConfig);
+          if (merged.subscriptions) setSubscriptions(merged.subscriptions);
+          if (merged.householdConfig) setHouseholdConfig(merged.householdConfig);
+          if (merged.security) setSecurity(merged.security);
+
+          saveUserDataToStorage(user.email, {
+            accounts: merged.accounts,
+            transactions: merged.transactions,
+            debts: merged.debts,
+            savingsGoals: merged.savingsGoals || [],
+            budgetConfig: merged.budgetConfig || budgetConfig,
+            subscriptions: merged.subscriptions || subscriptions,
+            householdConfig: merged.householdConfig || householdConfig,
+            security: merged.security,
+          });
+
+          // Asegurar que la nube tenga la versión consolidada
+          await saveUserFinancialsToCloud(user.email, merged);
+          setSyncStatus('synced');
         } else if (accounts.length > 0 || transactions.length > 0 || debts.length > 0 || savingsGoals.length > 0 || subscriptions.length > 0) {
-          // La nube está vacía pero este dispositivo tiene datos (ej: celular con 23 mil)
-          console.log('[CloudSync Init] Subiendo datos existentes del dispositivo a la nube...');
+          // La nube está vacía pero este dispositivo tiene datos locales: subir de inmediato
           await saveUserFinancialsToCloud(user.email, {
             accounts,
             transactions,
@@ -225,17 +216,10 @@ export default function App() {
         hasInitializedCloudRef.current = true;
       });
 
-    // 2. Suscripción en tiempo real: cualquier cambio hecho en la PC aparece en el celular y viceversa
+    // 2. Suscripción en tiempo real: cualquier cambio en celular aparece al instante en la computadora y viceversa
     const unsubscribe = subscribeToUserFinancials(
       user.email,
       (remote) => {
-        const remoteBalance = remote.accounts.reduce((sum, a) => sum + (Number(a.initialBalance) || 0), 0);
-        console.log('[CloudSync Listener] Actualización remota recibida:', {
-          cuentas: remote.accounts.length,
-          saldo: remoteBalance,
-          tienePin: Boolean(remote.security?.pin),
-        });
-
         isRemoteUpdatingRef.current = true;
         setAccounts(remote.accounts);
         setTransactions(remote.transactions);
@@ -245,6 +229,7 @@ export default function App() {
         if (remote.subscriptions) setSubscriptions(remote.subscriptions);
         if (remote.householdConfig) setHouseholdConfig(remote.householdConfig);
         if (remote.security) setSecurity(remote.security);
+
         saveUserDataToStorage(user.email, {
           accounts: remote.accounts,
           transactions: remote.transactions,
@@ -303,32 +288,84 @@ export default function App() {
     return () => clearTimeout(timer);
   }, [accounts, transactions, debts, savingsGoals, budgetConfig, subscriptions, householdConfig, security, user]);
 
-  // Bloqueo automático al salir de la app (cambio de ventana, pestaña, app minimizada o cerrada)
+  // Bloqueo automático e inactividad configurable
   useEffect(() => {
-    if (!security.isPinEnabled || !security.pin || security.lockMode !== 'on_exit' || !user) {
+    if (!security.isPinEnabled || !security.pin || !user) {
       return;
     }
 
-    const handleVisibilityChange = () => {
-      if (document.visibilityState === 'hidden') {
-        setIsAppLocked(true);
-        localStorage.setItem('finexa_is_locked', 'true');
-      }
-    };
+    const lockMode = security.lockMode || 'on_exit';
+    const autoLock = security.autoLockTime || 'immediate';
 
-    const handlePageHide = () => {
+    let timeoutMs: number | null = null;
+    if (autoLock === '1m') timeoutMs = 60 * 1000;
+    else if (autoLock === '5m') timeoutMs = 5 * 60 * 1000;
+    else if (autoLock === '15m') timeoutMs = 15 * 60 * 1000;
+    else if (autoLock === '30m') timeoutMs = 30 * 60 * 1000;
+
+    let inactivityTimer: any = null;
+
+    const lockNow = () => {
       setIsAppLocked(true);
       localStorage.setItem('finexa_is_locked', 'true');
     };
 
+    const resetInactivityTimer = () => {
+      if (timeoutMs) {
+        if (inactivityTimer) clearTimeout(inactivityTimer);
+        inactivityTimer = setTimeout(() => {
+          lockNow();
+        }, timeoutMs);
+      }
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'hidden') {
+        localStorage.setItem('finexa_last_active_time', String(Date.now()));
+        if (lockMode === 'on_exit' || autoLock === 'immediate') {
+          lockNow();
+        }
+      } else if (document.visibilityState === 'visible') {
+        const lastActive = Number(localStorage.getItem('finexa_last_active_time') || 0);
+        if (lastActive && timeoutMs && Date.now() - lastActive >= timeoutMs) {
+          lockNow();
+        }
+        resetInactivityTimer();
+      }
+    };
+
+    const handlePageHide = () => {
+      localStorage.setItem('finexa_last_active_time', String(Date.now()));
+      if (lockMode === 'on_exit' || autoLock === 'immediate') {
+        lockNow();
+      }
+    };
+
+    const handleActivity = () => {
+      resetInactivityTimer();
+    };
+
+    window.addEventListener('mousemove', handleActivity);
+    window.addEventListener('keydown', handleActivity);
+    window.addEventListener('touchstart', handleActivity);
+    window.addEventListener('scroll', handleActivity);
+    window.addEventListener('click', handleActivity);
     document.addEventListener('visibilitychange', handleVisibilityChange);
     window.addEventListener('pagehide', handlePageHide);
 
+    resetInactivityTimer();
+
     return () => {
+      if (inactivityTimer) clearTimeout(inactivityTimer);
+      window.removeEventListener('mousemove', handleActivity);
+      window.removeEventListener('keydown', handleActivity);
+      window.removeEventListener('touchstart', handleActivity);
+      window.removeEventListener('scroll', handleActivity);
+      window.removeEventListener('click', handleActivity);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
       window.removeEventListener('pagehide', handlePageHide);
     };
-  }, [security.isPinEnabled, security.pin, security.lockMode, user]);
+  }, [security.isPinEnabled, security.pin, security.lockMode, security.autoLockTime, user]);
 
   // Sincronización en LocalStorage: cada usuario guarda sus datos exclusivamente bajo su clave de cuenta
   useEffect(() => {
@@ -396,6 +433,30 @@ export default function App() {
       id: `tx-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
     };
     setTransactions((prev) => [tx, ...prev]);
+
+    // Si es abono a una deuda, verificar si se completa el pago para actualizar estado y recordatorios
+    if (tx.type === 'pago_deuda' && tx.debtId) {
+      const debt = debts.find((d) => d.id === tx.debtId);
+      if (debt) {
+        const currentPaid = transactions
+          .filter((t) => t.type === 'pago_deuda' && t.debtId === debt.id)
+          .reduce((sum, t) => sum + t.amount, 0);
+        const newTotalPaid = currentPaid + tx.amount;
+        if (newTotalPaid >= debt.totalAmount) {
+          const updatedDebt: DebtItem = {
+            ...debt,
+            isPaid: true,
+            paidDate: new Date().toISOString(),
+          };
+          setDebts((prev) => prev.map((d) => (d.id === debt.id ? updatedDebt : d)));
+
+          const calToken = getCachedCalendarToken();
+          if (calToken && debt.calendarEventId) {
+            syncDebtReminderToGoogle(calToken, updatedDebt).catch(() => {});
+          }
+        }
+      }
+    }
   };
 
   const handleAddAccount = (newAcc: Omit<Account, 'id' | 'createdAt'>) => {
@@ -407,13 +468,42 @@ export default function App() {
     setAccounts((prev) => [...prev, acc]);
   };
 
-  const handleAddDebt = (newDebt: Omit<DebtItem, 'id' | 'createdAt'>) => {
+  const handleAddDebt = async (newDebt: Omit<DebtItem, 'id' | 'createdAt'>) => {
     const debt: DebtItem = {
       ...newDebt,
       id: `debt-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
       createdAt: new Date().toISOString(),
     };
+
+    // Sincronización automática con Google Calendar si la sesión está conectada
+    const calToken = getCachedCalendarToken();
+    if (calToken && debt.dueDate) {
+      try {
+        const calRes = await syncDebtReminderToGoogle(calToken, debt);
+        if (calRes?.id) {
+          debt.calendarEventId = calRes.id;
+        }
+      } catch (err) {
+        console.warn('No se pudo crear recordatorio automático en Google Calendar:', err);
+      }
+    }
+
     setDebts((prev) => [...prev, debt]);
+  };
+
+  const handleUpdateDebt = async (updatedDebt: DebtItem) => {
+    const calToken = getCachedCalendarToken();
+    if (calToken && updatedDebt.dueDate) {
+      try {
+        const calRes = await syncDebtReminderToGoogle(calToken, updatedDebt);
+        if (calRes?.id) {
+          updatedDebt.calendarEventId = calRes.id;
+        }
+      } catch (err) {
+        console.warn('No se pudo actualizar recordatorio en Google Calendar:', err);
+      }
+    }
+    setDebts((prev) => prev.map((d) => (d.id === updatedDebt.id ? updatedDebt : d)));
   };
 
   const handleAddSavingsGoal = (newGoal: Omit<SavingsGoal, 'id' | 'createdAt'>) => {
@@ -549,6 +639,11 @@ export default function App() {
   };
 
   const handleDeleteDebt = (debtId: string) => {
+    const target = debts.find((d) => d.id === debtId);
+    const calToken = getCachedCalendarToken();
+    if (target?.calendarEventId && calToken) {
+      cancelDebtReminderFromGoogle(calToken, target).catch(() => {});
+    }
     setDebts((prev) => prev.filter((d) => d.id !== debtId));
     setTransactions((prev) => prev.filter((t) => t.debtId !== debtId));
   };
@@ -913,6 +1008,7 @@ export default function App() {
             accounts={accounts}
             onOpenQuickAdd={(mode) => handleOpenQuickAdd(mode || 'deuda')}
             onDeleteDebt={handleDeleteDebt}
+            onUpdateDebt={handleUpdateDebt}
           />
         )}
 

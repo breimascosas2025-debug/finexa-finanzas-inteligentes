@@ -24,7 +24,11 @@ export interface SecurityConfig {
   securityAnswer: string;
   privacyMode: boolean;
   lockMode?: 'manual' | 'on_exit'; // Bloqueo manual o al salir de la app
-  autoLockTime?: 'immediate' | '1m' | '5m';
+  autoLockTime?: 'immediate' | '1m' | '5m' | '15m' | '30m' | 'never' | 'manual';
+  biometricsEnabled?: boolean;
+  calendarSyncEnabled?: boolean;
+  calendarReminderDays?: number;
+  sheetsAutoSync?: boolean;
 }
 
 export type AccountType = 'salario' | 'personal' | 'ahorro' | 'efectivo' | 'banco' | 'tarjeta' | 'otro';
@@ -73,6 +77,11 @@ export interface DebtItem {
   dueDate?: string; // Fecha de vencimiento (YYYY-MM-DD)
   creditorOrNote?: string;
   createdAt: string;
+  calendarEventId?: string; // ID del evento en Google Calendar
+  isPaid?: boolean;
+  paidDate?: string;
+  category?: 'deuda' | 'prestamo' | 'tarjeta' | 'factura' | 'servicio' | 'otro';
+  reminderDaysBefore?: number;
 }
 
 export interface SavingsGoal {
@@ -131,6 +140,7 @@ export interface SubscriptionItem {
   icon?: string;
   isActive: boolean;
   reminderDaysBefore: number;
+  calendarEventId?: string;
   lastPaidDate?: string;
   createdAt: string;
 }

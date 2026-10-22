@@ -613,6 +613,27 @@ export const PerfilView: React.FC<PerfilViewProps> = ({
             </div>
           )}
 
+          {/* Toggle Auto-sync Google Sheets */}
+          <div className="flex items-center justify-between p-2.5 rounded-xl bg-[#181c24] border border-[#3c4a42]/40">
+            <div className="space-y-0.5">
+              <span className="text-[11px] font-bold text-white block">Sincronización automática</span>
+              <span className="text-[9px] text-[#86948a] block">Mantener Google Sheets actualizado con tus movimientos</span>
+            </div>
+            <label className="relative inline-flex items-center cursor-pointer">
+              <input
+                type="checkbox"
+                checked={Boolean(sheetsConfig.autoSyncEnabled)}
+                onChange={(e) => {
+                  const upd = { ...sheetsConfig, autoSyncEnabled: e.target.checked };
+                  setSheetsConfig(upd);
+                  saveStoredSheetsConfig(upd);
+                }}
+                className="sr-only peer"
+              />
+              <div className="w-9 h-5 bg-[#31353e] peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-[#10b981]" />
+            </label>
+          </div>
+
           <button
             type="button"
             disabled={isExportingSheets}
@@ -620,24 +641,24 @@ export const PerfilView: React.FC<PerfilViewProps> = ({
             className="w-full py-2.5 rounded-xl bg-[#10b981] hover:bg-[#059669] text-[#003824] font-black text-xs shadow-md flex items-center justify-center gap-1.5 active:scale-95 transition-all"
           >
             <span className="material-symbols-outlined text-[18px]">cloud_sync</span>
-            <span>{isExportingSheets ? 'Sincronizando con Google Sheets...' : 'Sincronizar Datos con Google Sheets'}</span>
+            <span>{isExportingSheets ? 'Sincronizando con Google Sheets...' : 'Exportar / Sincronizar Ahora con Google Sheets'}</span>
           </button>
         </div>
 
-        {/* 3. ARQUITECTURA DE IA FINEXA-PLUS (GLM 5-3 / NVIDIA NIM) */}
-        <div className="p-3.5 rounded-2xl bg-[#0f131c] border border-[#00d2ff]/40 space-y-3">
+        {/* 3. ASISTENTE FINANCIERO FINEXA PLUS */}
+        <div className="p-3.5 rounded-2xl bg-[#0f131c] border border-[#10b981]/40 space-y-3">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2.5">
               <SiriOrb size={32} />
               <div>
                 <div className="flex items-center gap-1.5">
-                  <h5 className="text-xs font-black text-white">Finexa-Plus</h5>
-                  <span className="text-[9px] bg-gradient-to-r from-[#00d2ff]/20 to-[#ec4899]/20 text-[#00d2ff] border border-[#00d2ff]/30 px-1.5 py-0.2 rounded-full font-bold">
-                    GLM 5-3
+                  <h5 className="text-xs font-black text-white">Finexa Plus</h5>
+                  <span className="text-[9px] bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 px-1.5 py-0.2 rounded-full font-bold">
+                    Asistente IA
                   </span>
                 </div>
                 <p className="text-[10px] text-[#86948a]">
-                  Copiloto inteligente tipo Siri con servidor proxy privado
+                  Asesor financiero inteligente con respuestas en streaming y privacidad total
                 </p>
               </div>
             </div>
@@ -648,34 +669,33 @@ export const PerfilView: React.FC<PerfilViewProps> = ({
           </div>
 
           <p className="text-[10px] text-[#86948a]">
-            Finexa-Plus analiza automáticamente tus cuentas, gastos, deudas y metas de ahorro para responder todas tus dudas financieras al instante.
+            Finexa Plus analiza tus ingresos, gastos, saldos disponibles y deudas para responder tus dudas con datos reales autorizados.
           </p>
 
-          {/* Botón directo para abrir el asistente con Siri Orb */}
+          {/* Botón directo para abrir el asistente */}
           {onOpenAiAssistant && (
             <button
               type="button"
               onClick={onOpenAiAssistant}
-              className="w-full py-2.5 px-3 rounded-2xl bg-gradient-to-r from-[#00d2ff]/20 via-[#ec4899]/20 to-[#8b5cf6]/20 hover:from-[#00d2ff]/30 hover:to-[#8b5cf6]/30 border border-[#00d2ff]/40 text-white font-bold text-xs flex items-center justify-center gap-2 shadow-md active:scale-95 transition-all"
+              className="w-full py-2.5 px-3 rounded-2xl bg-gradient-to-r from-[#10b981]/20 via-[#34d399]/20 to-[#059669]/20 hover:from-[#10b981]/30 hover:to-[#059669]/30 border border-[#10b981]/40 text-white font-bold text-xs flex items-center justify-center gap-2 shadow-md active:scale-95 transition-all"
             >
               <SiriOrb size={22} />
-              <span>Abrir Asistente Finexa-Plus (Hacer preguntas a la IA)</span>
+              <span>Consultar a Finexa Plus</span>
             </button>
           )}
 
-          {/* Selección de Modelo Único: Finexa-Plus */}
           <div>
-            <label className="text-[10px] font-bold text-[#86948a] block mb-1">Modelo Activo:</label>
-            <div className="p-2.5 rounded-xl bg-[#181c24] border border-[#00d2ff]/30 flex items-center justify-between">
+            <label className="text-[10px] font-bold text-[#86948a] block mb-1">Identidad del Asistente:</label>
+            <div className="p-2.5 rounded-xl bg-[#181c24] border border-[#10b981]/30 flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <div className="w-2 h-2 rounded-full bg-[#00d2ff] animate-pulse" />
+                <div className="w-2 h-2 rounded-full bg-[#10b981] animate-pulse" />
                 <div>
-                  <span className="text-xs font-black text-white block">Finexa-Plus</span>
-                  <span className="text-[9px] text-[#86948a]">Motor Neural GLM 5-3 de alta precisión financiera</span>
+                  <span className="text-xs font-black text-white block">Finexa Plus</span>
+                  <span className="text-[9px] text-[#86948a]">Inteligencia financiera integrada</span>
                 </div>
               </div>
-              <span className="text-[9px] bg-[#00d2ff]/15 text-[#00d2ff] px-2 py-0.5 rounded-full font-black">
-                ÚNICO MODELO
+              <span className="text-[9px] bg-[#10b981]/15 text-[#10b981] px-2 py-0.5 rounded-full font-black">
+                EN LÍNEA
               </span>
             </div>
           </div>

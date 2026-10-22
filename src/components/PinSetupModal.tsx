@@ -21,6 +21,10 @@ export const PinSetupModal: React.FC<PinSetupModalProps> = ({
   const [answer, setAnswer] = useState(currentConfig.securityAnswer || '');
   const [enablePin, setEnablePin] = useState(currentConfig.isPinEnabled);
   const [lockMode, setLockMode] = useState<'manual' | 'on_exit'>(currentConfig.lockMode || 'on_exit');
+  const [autoLockTime, setAutoLockTime] = useState<'immediate' | '1m' | '5m' | '15m' | '30m' | 'never' | 'manual'>(
+    (currentConfig.autoLockTime as any) || 'immediate'
+  );
+  const [biometricsEnabled, setBiometricsEnabled] = useState(Boolean(currentConfig.biometricsEnabled ?? true));
   const [error, setError] = useState('');
   const [savedSuccess, setSavedSuccess] = useState(false);
 
@@ -50,6 +54,8 @@ export const PinSetupModal: React.FC<PinSetupModalProps> = ({
       securityQuestion: question,
       securityAnswer: answer.trim() || currentConfig.securityAnswer,
       lockMode: lockMode,
+      autoLockTime: autoLockTime,
+      biometricsEnabled: biometricsEnabled,
     });
 
     setSavedSuccess(true);
@@ -209,6 +215,53 @@ export const PinSetupModal: React.FC<PinSetupModalProps> = ({
                     </p>
                   </button>
                 </div>
+              </div>
+
+              {/* Tiempo de Bloqueo por Inactividad */}
+              <div className="space-y-2 p-3 rounded-2xl bg-[#0f131c] border border-[#3c4a42]/40">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-white flex items-center gap-1.5">
+                    <span className="material-symbols-outlined text-[16px] text-[#10b981]">timer</span>
+                    <span>Bloqueo automático por inactividad</span>
+                  </span>
+                </div>
+                <select
+                  value={autoLockTime}
+                  onChange={(e) => setAutoLockTime(e.target.value as any)}
+                  className="w-full text-xs py-2 px-3 rounded-xl bg-[#181c24] border border-[#3c4a42] text-white focus:outline-none focus:border-[#10b981]"
+                >
+                  <option value="immediate">Inmediato al minimizar / salir</option>
+                  <option value="1m">Tras 1 minuto de inactividad</option>
+                  <option value="5m">Tras 5 minutos de inactividad</option>
+                  <option value="15m">Tras 15 minutos de inactividad</option>
+                  <option value="30m">Tras 30 minutos de inactividad</option>
+                  <option value="manual">Solo manual (no bloquear por inactividad)</option>
+                </select>
+                <p className="text-[10px] text-[#86948a]">
+                  Si no interactúas con la pantalla o sales de la aplicación durante este tiempo, se solicitará tu PIN o Passkey.
+                </p>
+              </div>
+
+              {/* Permitir Biometría / Passkeys */}
+              <div className="flex items-center justify-between p-3 rounded-2xl bg-[#0f131c] border border-[#3c4a42]/40">
+                <div className="space-y-0.5">
+                  <span className="text-xs font-bold text-white flex items-center gap-1.5">
+                    <span className="material-symbols-outlined text-[16px] text-[#10b981]">fingerprint</span>
+                    <span>Desbloqueo Biométrico</span>
+                  </span>
+                  <span className="text-[10px] text-[#86948a] block">
+                    Permitir desbloquear con Huella dactilar, Face ID o Windows Hello
+                  </span>
+                </div>
+                <label className="relative inline-flex items-center cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={biometricsEnabled}
+                    onChange={(e) => setBiometricsEnabled(e.target.checked)}
+                    className="sr-only peer"
+                  />
+                  <div className="w-11 h-6 bg-[#31353e] peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[#10b981]" />
+                </label>
               </div>
 
               {/* Security Question Section (Requested by user) */}

@@ -8,7 +8,8 @@ import {
   checkServerPrivateAiStatus,
   NvidiaAiConfig,
 } from '../services/nvidiaAiService';
-import { Transaction, Account, DebtItem } from '../types';
+import { Transaction, Account, DebtItem, BudgetConfig } from '../types';
+import { calculateAccountBalance, calculateTotalBalance } from '../utils/finance';
 
 interface FinexaPlusAssistantModalProps {
   isOpen: boolean;
@@ -18,6 +19,7 @@ interface FinexaPlusAssistantModalProps {
   debts: DebtItem[];
   currencySymbol?: string;
   dollarRates?: { buy: number; sell: number };
+  budgetConfig?: BudgetConfig;
 }
 
 interface Message {
@@ -35,6 +37,7 @@ export const FinexaPlusAssistantModal: React.FC<FinexaPlusAssistantModalProps> =
   debts,
   currencySymbol = '₡',
   dollarRates = { buy: 505, sell: 512 },
+  budgetConfig,
 }) => {
   const [config, setConfig] = useState<NvidiaAiConfig>(getStoredNvidiaConfig());
   const [showConfigPanel, setShowConfigPanel] = useState(false);
@@ -45,13 +48,16 @@ export const FinexaPlusAssistantModal: React.FC<FinexaPlusAssistantModalProps> =
   const [messages, setMessages] = useState<Message[]>(() => {
     try {
       const saved = localStorage.getItem('finexa_plus_chat_history');
-      if (saved) return JSON.parse(saved);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
     } catch {}
     return [
       {
         id: 'welcome',
         sender: 'finexa',
-        text: '¡Hola! Soy Finexa-Plus, tu copiloto financiero inteligente con motor neural GLM 5-3. Conozco tus cuentas, gastos y deudas en tiempo real. ¿En qué te puedo asesorar hoy?',
+        text: 'Hola, soy el asistente de Finexa Plus. ¿En qué puedo ayudarte?',
         time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       },
     ];
@@ -70,7 +76,7 @@ export const FinexaPlusAssistantModal: React.FC<FinexaPlusAssistantModalProps> =
     chatBottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, isLoading]);
 
-  // Verificar si la clave de NVIDIA está configurada privadamente en el servidor (.env)
+  // Verificar estado del servidor privado
   useEffect(() => {
     if (isOpen) {
       checkServerPrivateAiStatus().then((res) => {
@@ -85,7 +91,7 @@ export const FinexaPlusAssistantModal: React.FC<FinexaPlusAssistantModalProps> =
     }
   }, [isOpen]);
 
-  // Chequeo de soporte para reconocimiento de voz tipo Siri
+  // Reconocimiento de voz en navegadores compatibles
   useEffect(() => {
     const SpeechRecognition =
       (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
@@ -105,44 +111,83 @@ export const FinexaPlusAssistantModal: React.FC<FinexaPlusAssistantModalProps> =
         setIsListening(false);
       };
 
-      recognition.onerror = () => {
-        setIsListening(false);
-      };
-
-      recognition.onend = () => {
-        setIsListening(false);
-      };
-
+      recognition.onerror = () => setIsListening(false);
+      recognition.onend = () => setIsListening(false);
       recognitionRef.current = recognition;
     }
   }, []);
 
   if (!isOpen) return null;
 
-  // Generar contexto financiero del usuario
+  // Generar contexto financiero detallado, exacto y estructurado del usuario
   const buildFinancialContext = (): string => {
     const now = new Date();
     const currentMonth = now.getMonth();
     const currentYear = now.getFullYear();
 
-    const monthlyTransactions = transactions.filter((t) => {
+    // Mes actual
+    const currentMonthTx = transactions.filter((t) => {
       const d = new Date(t.date);
       return d.getMonth() === currentMonth && d.getFullYear() === currentYear;
     });
 
-    const totalIncome = monthlyTransactions
+    const incomeThisMonth = currentMonthTx
       .filter((t) => t.type === 'ingreso')
       .reduce((sum, t) => sum + t.amount, 0);
 
-    const totalExpense = monthlyTransactions
-      .filter((t) => t.type === 'gasto')
+    const expenseThisMonth = currentMonthTx
+      .filter((t) => t.type === 'gasto' || t.type === 'pago_deuda' || t.type === 'diezmo')
       .reduce((sum, t) => sum + t.amount, 0);
 
-    const totalDebtsRemaining = debts.reduce((sum, d) => sum + d.totalAmount, 0);
+    // Mes anterior para comparativas
+    const prevMonthDate = new Date(currentYear, currentMonth - 1, 1);
+    const prevMonth = prevMonthDate.getMonth();
+    const prevYear = prevMonthDate.getFullYear();
 
-    // Gastos por categoría
+    const prevMonthTx = transactions.filter((t) => {
+      const d = new Date(t.date);
+      return d.getMonth() === prevMonth && d.getFullYear() === prevYear;
+    });
+
+    const incomeLastMonth = prevMonthTx
+      .filter((t) => t.type === 'ingreso')
+      .reduce((sum, t) => sum + t.amount, 0);
+
+    const expenseLastMonth = prevMonthTx
+      .filter((t) => t.type === 'gasto' || t.type === 'pago_deuda' || t.type === 'diezmo')
+      .reduce((sum, t) => sum + t.amount, 0);
+
+    // Saldos por cuenta y total disponible calculado
+    const totalLiquidAvailable = calculateTotalBalance(accounts, transactions, 'CRC');
+
+    const accountsSummary = accounts
+      .map((a) => {
+        const bal = calculateAccountBalance(a, transactions);
+        return `- ${a.name} (${a.type}): ${a.currencySymbol || currencySymbol}${bal.toLocaleString()} (Saldo inicial: ${a.currencySymbol || currencySymbol}${a.initialBalance.toLocaleString()})`;
+      })
+      .join('\n');
+
+    // Deudas pendientes y amortizaciones
+    const debtsSummary = debts
+      .map((d) => {
+        const paid = transactions
+          .filter((t) => t.type === 'pago_deuda' && t.debtId === d.id)
+          .reduce((sum, t) => sum + t.amount, 0);
+        const remaining = Math.max(0, d.totalAmount - paid);
+        return `- ${d.name}: Total ${currencySymbol}${d.totalAmount.toLocaleString()} | Abonado: ${currencySymbol}${paid.toLocaleString()} | Pendiente: ${currencySymbol}${remaining.toLocaleString()} (Vencimiento: ${d.dueDate || 'Sin fecha fija'})`;
+      })
+      .join('\n');
+
+    const totalDebtsRemaining = debts.reduce((sum, d) => {
+      const paid = transactions
+        .filter((t) => t.type === 'pago_deuda' && t.debtId === d.id)
+        .reduce((s, t) => s + t.amount, 0);
+      return sum + Math.max(0, d.totalAmount - paid);
+    }, 0);
+
+    // Desglose de gastos por categoría este mes
     const categoryTotals: { [key: string]: number } = {};
-    monthlyTransactions
+    currentMonthTx
       .filter((t) => t.type === 'gasto')
       .forEach((t) => {
         categoryTotals[t.category] = (categoryTotals[t.category] || 0) + t.amount;
@@ -152,36 +197,33 @@ export const FinexaPlusAssistantModal: React.FC<FinexaPlusAssistantModalProps> =
       .map(([cat, amt]) => `- ${cat}: ${currencySymbol}${amt.toLocaleString()}`)
       .join('\n');
 
-    const accountsList = accounts
-      .map(
-        (a) =>
-          `- ${a.name} (${a.type}): ${a.currencySymbol || currencySymbol}${a.initialBalance.toLocaleString()}`
-      )
-      .join('\n');
-
-    const debtsList = debts
-      .map(
-        (d) =>
-          `- ${d.name}: ${currencySymbol}${d.totalAmount.toLocaleString()} (Vence: ${d.dueDate || 'Sin fecha'})`
-      )
-      .join('\n');
+    // Últimos 8 movimientos para explicar transacciones
+    const recentTxList = transactions.slice(0, 8).map((t) => 
+      `- ${t.date.split('T')[0]}: ${t.type.toUpperCase()} | ${t.title} | ${currencySymbol}${t.amount.toLocaleString()} (${t.category})`
+    ).join('\n');
 
     return `
+RESUMEN DISPONIBLE Y GENERAL:
 - Moneda principal: ${currencySymbol}
+- Dinero total disponible en cuentas: ${currencySymbol}${totalLiquidAvailable.toLocaleString()}
 - Tipo de Cambio Dólar hoy: Compra ₡${dollarRates.buy} | Venta ₡${dollarRates.sell}
-- Ingresos este mes: ${currencySymbol}${totalIncome.toLocaleString()}
-- Gastos este mes: ${currencySymbol}${totalExpense.toLocaleString()}
-- Balance neto del mes: ${currencySymbol}${(totalIncome - totalExpense).toLocaleString()}
-- Total en deudas pendientes: ${currencySymbol}${totalDebtsRemaining.toLocaleString()}
 
-CUENTAS Y SALDOS ACTIVOS:
-${accountsList || 'No hay cuentas registradas'}
+COMPARATIVA DE MESES:
+- Mes actual: Ingresos ${currencySymbol}${incomeThisMonth.toLocaleString()} | Gastos ${currencySymbol}${expenseThisMonth.toLocaleString()} | Balance neto: ${currencySymbol}${(incomeThisMonth - expenseThisMonth).toLocaleString()}
+- Mes anterior: Ingresos ${currencySymbol}${incomeLastMonth.toLocaleString()} | Gastos ${currencySymbol}${expenseLastMonth.toLocaleString()} | Balance neto: ${currencySymbol}${(incomeLastMonth - expenseLastMonth).toLocaleString()}
 
-GASTOS POR CATEGORÍA ESTE MES:
+CUENTAS Y SALDOS REALES:
+${accountsSummary || 'No hay cuentas registradas'}
+
+DEUDAS Y PAGOS PENDIENTES:
+- Total pendiente en deudas: ${currencySymbol}${totalDebtsRemaining.toLocaleString()}
+${debtsSummary || 'Sin deudas registradas'}
+
+GASTOS POR CATEGORÍA MES ACTUAL:
 ${categoryBreakdown || 'No hay gastos registrados este mes'}
 
-DEUDAS REGISTRADAS:
-${debtsList || 'Sin deudas registradas'}
+ÚLTIMOS MOVIMIENTOS REGISTRADOS:
+${recentTxList || 'Sin transacciones recientes'}
     `.trim();
   };
 
@@ -196,11 +238,19 @@ ${debtsList || 'Sin deudas registradas'}
       time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
     };
 
-    setMessages((prev) => [...prev, userMsg]);
+    const aiMsgId = (Date.now() + 1).toString();
+    const initialAiMsg: Message = {
+      id: aiMsgId,
+      sender: 'finexa',
+      text: '',
+      time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+    };
+
+    setMessages((prev) => [...prev, userMsg, initialAiMsg]);
     setInputText('');
     setIsLoading(true);
 
-    const historyForAi = messages.slice(-5).map((m) => ({
+    const historyForAi = messages.slice(-6).map((m) => ({
       role: (m.sender === 'user' ? 'user' : 'assistant') as 'user' | 'assistant',
       content: m.text,
     }));
@@ -211,29 +261,34 @@ ${debtsList || 'Sin deudas registradas'}
       userPrompt: textToSend,
       financialContext,
       history: historyForAi,
+      onStreamChunk: (_delta, fullText) => {
+        setIsLoading(false);
+        setMessages((prev) =>
+          prev.map((m) => (m.id === aiMsgId ? { ...m, text: fullText } : m))
+        );
+      },
     });
 
     setIsLoading(false);
 
     if (res.error) {
-      if (res.error.includes('NVIDIA_API_KEY') || res.error.includes('servidor')) {
+      if (res.error.includes('no está configurado') || res.error.includes('servidor')) {
         setShowConfigPanel(true);
       }
-      const errorMsg: Message = {
-        id: (Date.now() + 1).toString(),
-        sender: 'finexa',
-        text: `🔒 ${res.error}\n\nPara máxima privacidad, guarda tu clave en el archivo .env del servidor como NVIDIA_API_KEY="nvapi-..." o abre el panel de ajustes.`,
-        time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-      };
-      setMessages((prev) => [...prev, errorMsg]);
+      setMessages((prev) =>
+        prev.map((m) =>
+          m.id === aiMsgId
+            ? {
+                ...m,
+                text: `🔒 ${res.error}\n\nPara activar Finexa Plus, asegúrate de guardar tu clave en el archivo .env del servidor como NVIDIA_API_KEY="..." o ingresarla en los ajustes del asistente.`,
+              }
+            : m
+        )
+      );
     } else {
-      const aiMsg: Message = {
-        id: (Date.now() + 1).toString(),
-        sender: 'finexa',
-        text: res.reply,
-        time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-      };
-      setMessages((prev) => [...prev, aiMsg]);
+      setMessages((prev) =>
+        prev.map((m) => (m.id === aiMsgId ? { ...m, text: res.reply } : m))
+      );
     }
   };
 
@@ -246,7 +301,7 @@ ${debtsList || 'Sin deudas registradas'}
       try {
         recognitionRef.current.start();
         setIsListening(true);
-      } catch (err) {
+      } catch {
         setIsListening(false);
       }
     }
@@ -254,7 +309,7 @@ ${debtsList || 'Sin deudas registradas'}
 
   const handleSaveApiKey = async () => {
     if (!apiKeyInput.trim()) {
-      setKeyFeedback('Ingresa una API Key válida.');
+      setKeyFeedback('Ingresa una clave válida.');
       return;
     }
 
@@ -263,8 +318,7 @@ ${debtsList || 'Sin deudas registradas'}
 
     const updated = saveStoredNvidiaConfig({
       apiKey: apiKeyInput.trim(),
-      model: 'glm-5-3',
-      displayName: 'Finexa-Plus',
+      displayName: 'Finexa Plus',
     });
     setConfig(updated);
 
@@ -272,7 +326,7 @@ ${debtsList || 'Sin deudas registradas'}
     setIsTestingKey(false);
 
     if (testRes.success) {
-      setKeyFeedback('¡Conectado exitosamente con NVIDIA NIM!');
+      setKeyFeedback('¡Conectado exitosamente con Finexa Plus!');
       setTimeout(() => setShowConfigPanel(false), 1200);
     } else {
       setKeyFeedback(testRes.message);
@@ -280,12 +334,12 @@ ${debtsList || 'Sin deudas registradas'}
   };
 
   const handleClearChat = () => {
-    if (window.confirm('¿Deseas reiniciar la conversación con Finexa-Plus?')) {
+    if (window.confirm('¿Deseas reiniciar la conversación con Finexa Plus?')) {
       const resetMsgs: Message[] = [
         {
           id: 'welcome_new',
           sender: 'finexa',
-          text: 'Conversación reiniciada. ¿Qué consulta financiera deseas hacer ahora?',
+          text: 'Hola, soy el asistente de Finexa Plus. ¿En qué puedo ayudarte?',
           time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
         },
       ];
@@ -296,34 +350,39 @@ ${debtsList || 'Sin deudas registradas'}
 
   const samplePrompts = [
     '📊 ¿Cómo van mis gastos este mes?',
-    '💳 ¿Qué deudas debo priorizar?',
-    '💰 ¿Cuál es mi balance general?',
-    '🎯 ¿Cómo puedo ahorrar más dinero?',
-    '💵 ¿Cuánto me queda disponible?',
+    '💵 ¿Cuánto dinero disponible tengo en mis cuentas?',
+    '💳 ¿Cómo puedo organizar mis deudas y pagos?',
+    '📈 Compara mis gastos con el mes anterior',
+    '🎯 ¿Cómo puedo crear un presupuesto efectivo?',
   ];
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/80 backdrop-blur-md animate-in fade-in duration-200">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/80 backdrop-blur-md animate-in fade-in duration-200 select-none">
       <div className="w-full max-w-xl bg-[#0e1219] border border-[#3c4a42]/60 rounded-3xl shadow-2xl flex flex-col h-[90vh] max-h-[720px] overflow-hidden">
-        {/* Top Header con Siri Orb estilo iOS */}
+        {/* Top Header */}
         <div className="px-4 py-3.5 bg-[#141923] border-b border-[#3c4a42]/40 flex items-center justify-between shrink-0">
           <div className="flex items-center gap-3">
             <SiriOrb size={36} isThinking={isLoading || isListening} />
             <div>
               <div className="flex items-center gap-1.5">
-                <h3 className="text-sm font-black text-white tracking-wide">Finexa-Plus</h3>
-                <span className="px-2 py-0.5 rounded-full text-[9px] font-black bg-gradient-to-r from-[#00d2ff]/20 to-[#ec4899]/20 text-[#00d2ff] border border-[#00d2ff]/30">
-                  GLM 5-3
-                </span>
+                <h3 className="text-sm font-black text-white tracking-wide">Finexa Plus</h3>
+                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
               </div>
-              <p className="text-[10px] text-[#86948a] flex items-center gap-1">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                <span>Asistente Financiero en Línea</span>
+              <p className="text-[10px] text-[#86948a]">
+                Asistente Financiero Inteligente
               </p>
             </div>
           </div>
 
           <div className="flex items-center gap-1">
+            <button
+              type="button"
+              onClick={() => setShowConfigPanel(!showConfigPanel)}
+              title="Configuración de IA"
+              className="w-8 h-8 rounded-xl bg-[#262a33] hover:bg-[#31353e] text-[#86948a] hover:text-white flex items-center justify-center text-xs transition-colors"
+            >
+              <span className="material-symbols-outlined text-[16px]">settings</span>
+            </button>
             <button
               type="button"
               onClick={handleClearChat}
@@ -342,6 +401,46 @@ ${debtsList || 'Sin deudas registradas'}
           </div>
         </div>
 
+        {/* Panel de Configuración Opcional */}
+        {showConfigPanel && (
+          <div className="p-3.5 bg-[#121620] border-b border-[#3c4a42]/50 space-y-2.5 animate-in fade-in shrink-0">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold text-white flex items-center gap-1.5">
+                <span className="material-symbols-outlined text-[16px] text-[#10b981]">key</span>
+                <span>Configuración de Servidor Privado</span>
+              </span>
+              <span className="text-[9px] px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 font-bold">
+                {config.status === 'connected' ? 'Conectado' : 'Pendiente'}
+              </span>
+            </div>
+            <p className="text-[10px] text-[#86948a]">
+              Las consultas se procesan de forma privada en el servidor backend sin exponer credenciales al cliente.
+            </p>
+            <div className="flex gap-2">
+              <input
+                type="password"
+                placeholder="nvapi-... (Opcional si ya está en .env)"
+                value={apiKeyInput}
+                onChange={(e) => setApiKeyInput(e.target.value)}
+                className="flex-1 bg-[#0f131c] border border-[#3c4a42] rounded-xl px-3 py-1.5 text-xs text-white focus:outline-none focus:border-[#10b981]"
+              />
+              <button
+                type="button"
+                disabled={isTestingKey}
+                onClick={handleSaveApiKey}
+                className="px-3.5 py-1.5 rounded-xl bg-[#10b981] text-[#003824] font-bold text-xs shadow active:scale-95 transition-all"
+              >
+                {isTestingKey ? 'Probando...' : 'Guardar y Probar'}
+              </button>
+            </div>
+            {keyFeedback && (
+              <p className={`text-[10px] ${keyFeedback.includes('exitosamente') ? 'text-emerald-400' : 'text-amber-400'}`}>
+                {keyFeedback}
+              </p>
+            )}
+          </div>
+        )}
+
         {/* Chat Feed */}
         <div className="flex-1 overflow-y-auto p-4 space-y-3.5 no-scrollbar">
           {messages.map((m) => {
@@ -349,7 +448,7 @@ ${debtsList || 'Sin deudas registradas'}
             return (
               <div
                 key={m.id}
-                className={`flex gap-2.5 max-w-[85%] ${
+                className={`flex gap-2.5 max-w-[88%] ${
                   isUser ? 'ml-auto flex-row-reverse' : 'mr-auto'
                 }`}
               >
@@ -360,20 +459,20 @@ ${debtsList || 'Sin deudas registradas'}
                 )}
 
                 <div
-                  className={`p-3 rounded-2xl text-xs leading-relaxed space-y-1 ${
+                  className={`p-3.5 rounded-2xl text-xs leading-relaxed space-y-1.5 ${
                     isUser
                       ? 'bg-gradient-to-br from-[#10b981] to-[#059669] text-white font-medium rounded-tr-sm shadow-md'
                       : 'bg-[#181d28] border border-[#3c4a42]/50 text-[#dfe2ee] rounded-tl-sm shadow'
                   }`}
                 >
-                  <p className="whitespace-pre-line">{m.text}</p>
+                  <p className="whitespace-pre-line">{m.text || (isLoading ? 'Escribiendo respuesta...' : '')}</p>
                   <div
                     className={`flex items-center gap-1.5 text-[9px] pt-1 ${
                       isUser ? 'text-white/80 justify-end' : 'text-[#86948a]'
                     }`}
                   >
                     <span>{m.time}</span>
-                    {!isUser && (
+                    {!isUser && m.text && (
                       <button
                         type="button"
                         onClick={() => navigator.clipboard.writeText(m.text)}
@@ -393,13 +492,13 @@ ${debtsList || 'Sin deudas registradas'}
             <div className="flex items-center gap-3 p-3 bg-[#181d28]/70 border border-[#3c4a42]/40 rounded-2xl w-fit">
               <SiriOrb size={26} isThinking={true} />
               <div className="space-y-1">
-                <span className="text-xs font-bold text-transparent bg-clip-text bg-gradient-to-r from-[#00d2ff] to-[#ec4899] animate-pulse">
-                  Finexa-Plus analizando con motor GLM 5-3...
+                <span className="text-xs font-bold text-emerald-400 animate-pulse">
+                  Finexa Plus respondiendo...
                 </span>
                 <div className="flex gap-1">
-                  <span className="w-1.5 h-1.5 rounded-full bg-[#00d2ff] animate-bounce" style={{ animationDelay: '0ms' }} />
-                  <span className="w-1.5 h-1.5 rounded-full bg-[#ec4899] animate-bounce" style={{ animationDelay: '150ms' }} />
-                  <span className="w-1.5 h-1.5 rounded-full bg-[#8b5cf6] animate-bounce" style={{ animationDelay: '300ms' }} />
+                  <span className="w-1.5 h-1.5 rounded-full bg-[#10b981] animate-bounce" style={{ animationDelay: '0ms' }} />
+                  <span className="w-1.5 h-1.5 rounded-full bg-[#34d399] animate-bounce" style={{ animationDelay: '150ms' }} />
+                  <span className="w-1.5 h-1.5 rounded-full bg-[#6ee7b7] animate-bounce" style={{ animationDelay: '300ms' }} />
                 </div>
               </div>
             </div>
@@ -422,7 +521,7 @@ ${debtsList || 'Sin deudas registradas'}
           ))}
         </div>
 
-        {/* Input Bar con Micrófono tipo Siri y Botón Enviar */}
+        {/* Input Bar */}
         <div className="p-3 bg-[#141923] border-t border-[#3c4a42]/40 shrink-0">
           <form
             onSubmit={(e) => {
@@ -435,11 +534,11 @@ ${debtsList || 'Sin deudas registradas'}
               <button
                 type="button"
                 onClick={handleToggleVoice}
-                title={isListening ? 'Detener micrófono' : 'Hablar con Finexa-Plus'}
+                title={isListening ? 'Detener micrófono' : 'Hablar con Finexa Plus'}
                 className={`w-10 h-10 rounded-2xl flex items-center justify-center transition-all ${
                   isListening
                     ? 'bg-gradient-to-r from-[#ec4899] to-[#f43f5e] text-white animate-pulse shadow-lg shadow-rose-500/30'
-                    : 'bg-[#262a33] text-[#86948a] hover:text-[#00d2ff] hover:bg-[#31353e]'
+                    : 'bg-[#262a33] text-[#86948a] hover:text-[#10b981] hover:bg-[#31353e]'
                 }`}
               >
                 <span className="material-symbols-outlined text-[20px]">
@@ -452,14 +551,18 @@ ${debtsList || 'Sin deudas registradas'}
               type="text"
               value={inputText}
               onChange={(e) => setInputText(e.target.value)}
-              placeholder={isListening ? 'Escuchando tu voz...' : 'Pregúntale lo que sea a Finexa-Plus...'}
-              className="flex-1 bg-[#0a0d14] border border-[#3c4a42]/60 rounded-2xl px-4 py-2.5 text-xs text-white placeholder-[#68736d] focus:outline-none focus:border-[#00d2ff] transition-all"
+              placeholder="Pregúntale a Finexa Plus sobre tus finanzas..."
+              className="flex-1 bg-[#181d28] border border-[#3c4a42]/60 rounded-2xl px-4 py-2.5 text-xs text-white placeholder-[#86948a] focus:outline-none focus:border-[#10b981] transition-all"
             />
 
             <button
               type="submit"
               disabled={!inputText.trim() || isLoading}
-              className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-[#00d2ff] via-[#3b82f6] to-[#8b5cf6] text-white flex items-center justify-center disabled:opacity-40 disabled:scale-100 hover:scale-105 active:scale-95 transition-all shadow-md shadow-[#00d2ff]/20"
+              className={`w-10 h-10 rounded-2xl flex items-center justify-center transition-all ${
+                inputText.trim() && !isLoading
+                  ? 'bg-gradient-to-tr from-[#10b981] to-[#059669] text-white shadow-lg shadow-emerald-500/25 active:scale-90 hover:scale-105'
+                  : 'bg-[#262a33] text-[#86948a] cursor-not-allowed opacity-50'
+              }`}
             >
               <span className="material-symbols-outlined text-[18px]">send</span>
             </button>

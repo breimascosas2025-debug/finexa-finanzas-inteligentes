@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { PinexaIcon } from './PinexaLogo';
 import { SecurityConfig, UserProfile } from '../types';
+import { verifyBiometricUnlock, getStoredPasskeys, isPasskeySupported } from '../services/webauthnService';
 
 interface PinLockViewProps {
   user: UserProfile;
@@ -18,10 +19,43 @@ export const PinLockView: React.FC<PinLockViewProps> = ({
   const [enteredPin, setEnteredPin] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
   const [isShaking, setIsShaking] = useState(false);
+  const [isVerifyingBiometrics, setIsVerifyingBiometrics] = useState(false);
+  const [hasPasskeys, setHasPasskeys] = useState(false);
   const [isRecoveryOpen, setIsRecoveryOpen] = useState(false);
   const [recoveryAnswerInput, setRecoveryAnswerInput] = useState('');
   const [recoveryError, setRecoveryError] = useState('');
   const [recoverySuccess, setRecoverySuccess] = useState(false);
+
+  useEffect(() => {
+    if (user?.email) {
+      const keys = getStoredPasskeys(user.email);
+      setHasPasskeys(keys.length > 0);
+      // Si tiene passkeys o biometría activada, auto-lanzar verificación rápida
+      if (keys.length > 0 || security.biometricsEnabled) {
+        handleBiometricUnlock();
+      }
+    }
+  }, [user?.email]);
+
+  const handleBiometricUnlock = async () => {
+    if (!user?.email) return;
+    setIsVerifyingBiometrics(true);
+    setErrorMsg('');
+    try {
+      const success = await verifyBiometricUnlock(user.email);
+      if (success) {
+        onUnlockSuccess();
+      }
+    } catch (err: any) {
+      console.warn('Biometric unlock attempt:', err);
+      // No mostrar error alarmante si el usuario simplemente prefirió usar PIN
+      if (!err.message?.includes('cancelada')) {
+        setErrorMsg(err.message || 'Verificación biométrica fallida.');
+      }
+    } finally {
+      setIsVerifyingBiometrics(false);
+    }
+  };
 
   const handleKeyPress = (num: string) => {
     if (enteredPin.length < 4) {
@@ -170,14 +204,17 @@ export const PinLockView: React.FC<PinLockViewProps> = ({
 
         {/* Biometrics & Recovery options */}
         <div className="flex items-center justify-between pt-2 px-2">
-          {security.biometricsEnabled ? (
+          {hasPasskeys || security.biometricsEnabled || isPasskeySupported() ? (
             <button
               type="button"
-              onClick={onUnlockSuccess}
-              className="flex items-center gap-1.5 text-xs text-[#10b981] font-semibold hover:underline"
+              disabled={isVerifyingBiometrics}
+              onClick={handleBiometricUnlock}
+              className="flex items-center gap-1.5 text-xs text-[#10b981] font-semibold hover:underline active:scale-95 transition-all"
             >
-              <span className="material-symbols-outlined text-[18px]">fingerprint</span>
-              <span>Usar Face ID / Huella</span>
+              <span className={`material-symbols-outlined text-[18px] ${isVerifyingBiometrics ? 'animate-pulse' : ''}`}>
+                fingerprint
+              </span>
+              <span>{isVerifyingBiometrics ? 'Verificando...' : 'Desbloquear con Huella / Face ID'}</span>
             </button>
           ) : (
             <div />

@@ -28,6 +28,87 @@ function cleanForFirestore<T>(data: T): T {
 }
 
 /**
+ * Fusiona de forma determinista y sin pérdida de datos los registros locales y remotos
+ */
+export function mergeFinancialData(
+  local: Partial<RemoteFinancialData>,
+  remote: Partial<RemoteFinancialData>
+): RemoteFinancialData {
+  // Cuentas unificadas por ID
+  const accountMap = new Map<string, Account>();
+  (remote.accounts || []).forEach((a) => accountMap.set(a.id, a));
+  (local.accounts || []).forEach((a) => {
+    if (!accountMap.has(a.id)) {
+      accountMap.set(a.id, a);
+    }
+  });
+
+  // Transacciones unificadas por ID (evita duplicados exactos)
+  const txMap = new Map<string, Transaction>();
+  (remote.transactions || []).forEach((t) => txMap.set(t.id, t));
+  (local.transactions || []).forEach((t) => {
+    if (!txMap.has(t.id)) {
+      txMap.set(t.id, t);
+    }
+  });
+  const mergedTx = Array.from(txMap.values()).sort(
+    (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
+  );
+
+  // Deudas unificadas por ID
+  const debtMap = new Map<string, DebtItem>();
+  (remote.debts || []).forEach((d) => debtMap.set(d.id, d));
+  (local.debts || []).forEach((d) => {
+    if (!debtMap.has(d.id)) {
+      debtMap.set(d.id, d);
+    } else {
+      const existing = debtMap.get(d.id)!;
+      debtMap.set(d.id, {
+        ...existing,
+        calendarEventId: existing.calendarEventId || d.calendarEventId,
+        isPaid: existing.isPaid ?? d.isPaid,
+        paidDate: existing.paidDate || d.paidDate,
+      });
+    }
+  });
+
+  // Metas de ahorro unificadas por ID
+  const goalMap = new Map<string, SavingsGoal>();
+  (remote.savingsGoals || []).forEach((g) => goalMap.set(g.id, g));
+  (local.savingsGoals || []).forEach((g) => {
+    if (!goalMap.has(g.id)) goalMap.set(g.id, g);
+  });
+
+  // Suscripciones unificadas por ID
+  const subMap = new Map<string, SubscriptionItem>();
+  (remote.subscriptions || []).forEach((s) => subMap.set(s.id, s));
+  (local.subscriptions || []).forEach((s) => {
+    if (!subMap.has(s.id)) subMap.set(s.id, s);
+  });
+
+  const remoteTime = new Date(remote.lastUpdated || 0).getTime();
+  const localTime = new Date(local.lastUpdated || 0).getTime();
+  const latestSecurity = remoteTime >= localTime ? (remote.security || local.security) : (local.security || remote.security);
+  const latestBudget = remoteTime >= localTime ? (remote.budgetConfig || local.budgetConfig) : (local.budgetConfig || remote.budgetConfig);
+  const latestHousehold = remoteTime >= localTime ? (remote.householdConfig || local.householdConfig) : (local.householdConfig || remote.householdConfig);
+  const latestProfile = remoteTime >= localTime ? (remote.profile || local.profile) : (local.profile || remote.profile);
+
+  return {
+    email: remote.email || local.email || '',
+    lastUpdated: new Date().toISOString(),
+    accounts: Array.from(accountMap.values()),
+    transactions: mergedTx,
+    debts: Array.from(debtMap.values()),
+    savingsGoals: Array.from(goalMap.values()),
+    budgetConfig: latestBudget,
+    subscriptions: Array.from(subMap.values()),
+    householdConfig: latestHousehold,
+    security: latestSecurity,
+    profile: latestProfile,
+  };
+}
+
+/**
  * Carga una sola vez los datos financieros desde Firestore
  */
 export async function fetchUserFinancialsFromCloud(email: string): Promise<RemoteFinancialData | null> {
@@ -59,17 +140,12 @@ export async function fetchUserFinancialsFromCloud(email: string): Promise<Remot
           privacyMode: Boolean(data.security.privacyMode),
           lockMode: data.security.lockMode === 'manual' ? 'manual' : 'on_exit',
           autoLockTime: data.security.autoLockTime || 'immediate',
+          biometricsEnabled: Boolean(data.security.biometricsEnabled ?? true),
+          calendarSyncEnabled: Boolean(data.security.calendarSyncEnabled),
+          calendarReminderDays: data.security.calendarReminderDays ?? 2,
+          sheetsAutoSync: Boolean(data.security.sheetsAutoSync),
         };
       }
-
-      const totalInitial = accounts.reduce((sum, item) => sum + (Number(item.initialBalance) || 0), 0);
-      console.log(`[CloudSync] Datos cargados de la nube para ${email}:`, {
-        cuentas: accounts.length,
-        saldoInicialTotal: totalInitial,
-        transacciones: transactions.length,
-        metasAhorro: savingsGoals.length,
-        tienePin: Boolean(security?.pin),
-      });
 
       return {
         email: data.email || email,
@@ -97,7 +173,7 @@ export async function fetchUserFinancialsFromCloud(email: string): Promise<Remot
 }
 
 /**
- * Guarda los datos financieros y el PIN en Firestore para sincronización multidispositivo (PC, Celular, etc.)
+ * Guarda los datos financieros y configuraciones en Firestore para sincronización multidispositivo
  */
 export async function saveUserFinancialsToCloud(
   email: string,
@@ -152,6 +228,10 @@ export async function saveUserFinancialsToCloud(
         privacyMode: Boolean(payload.security.privacyMode),
         lockMode: payload.security.lockMode || 'on_exit',
         autoLockTime: payload.security.autoLockTime || 'immediate',
+        biometricsEnabled: Boolean(payload.security.biometricsEnabled ?? true),
+        calendarSyncEnabled: Boolean(payload.security.calendarSyncEnabled),
+        calendarReminderDays: payload.security.calendarReminderDays ?? 2,
+        sheetsAutoSync: Boolean(payload.security.sheetsAutoSync),
       };
     }
 
@@ -163,18 +243,8 @@ export async function saveUserFinancialsToCloud(
       };
     }
 
-    // Sanitizar profundamente antes de enviar a Firestore
     const sanitizedData = cleanForFirestore(rawData);
-
     await setDoc(docRef, sanitizedData, { merge: true });
-
-    const totalInitial = cleanAccounts.reduce((acc, a) => acc + (Number(a.initialBalance) || 0), 0);
-    console.log(`[CloudSync] Sincronización exitosa en la nube para ${email}:`, {
-      cuentas: cleanAccounts.length,
-      saldoInicialTotal: totalInitial,
-      tienePin: Boolean(payload.security?.pin),
-    });
-
     return true;
   } catch (error) {
     console.error('[CloudSync] Error guardando en la nube:', error);
@@ -225,6 +295,10 @@ export function subscribeToUserFinancials(
             privacyMode: Boolean(data.security.privacyMode),
             lockMode: data.security.lockMode === 'manual' ? 'manual' : 'on_exit',
             autoLockTime: data.security.autoLockTime || 'immediate',
+            biometricsEnabled: Boolean(data.security.biometricsEnabled ?? true),
+            calendarSyncEnabled: Boolean(data.security.calendarSyncEnabled),
+            calendarReminderDays: data.security.calendarReminderDays ?? 2,
+            sheetsAutoSync: Boolean(data.security.sheetsAutoSync),
           };
         }
 

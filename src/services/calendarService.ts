@@ -209,10 +209,13 @@ export async function revokeGoogleCalendarToken(accessToken: string): Promise<bo
 
 /**
  * Prepara y sincroniza un recordatorio de Pago de Deuda en Google Calendar
+ * Soporta actualización si ya existe un ID para evitar duplicados,
+ * y programa recordatorios (2 días antes, 1 día antes y el mismo día).
  */
 export async function syncDebtReminderToGoogle(
   accessToken: string,
-  debt: DebtItem
+  debt: DebtItem,
+  options?: { reminderDays?: number }
 ): Promise<{ id: string; htmlLink?: string }> {
   const amount = debt.totalAmount || 0;
   const formattedAmount = new Intl.NumberFormat('es-CR', {
@@ -222,27 +225,66 @@ export async function syncDebtReminderToGoogle(
   }).format(amount);
 
   const dueDate = debt.dueDate || new Date().toISOString().split('T')[0];
+  const reminderDays = options?.reminderDays ?? debt.reminderDaysBefore ?? 2;
+  const advanceMinutes = Math.max(1, reminderDays) * 24 * 60; // 2 días = 2880 min
+
+  const isPaid = Boolean(debt.isPaid);
 
   const eventPayload: CalendarEventPayload = {
-    summary: `💳 Pago de Deuda: ${debt.name} (${formattedAmount})`,
-    description: `Recordatorio financiero de Finexa:\n- Deuda: ${debt.name}\n- Detalle / Acreedor: ${debt.creditorOrNote || 'Personal'}\n- Monto pendiente: ${formattedAmount}\n- Fecha límite: ${dueDate}\n\nMarca este pago en Finexa una vez realizado.`,
+    summary: isPaid
+      ? `✅ [PAGADO] Finexa Plus: ${debt.name} (${formattedAmount})`
+      : `Finexa Plus: recuerda que debes pagar ${formattedAmount} (${debt.name})`,
+    description: `Recordatorio automático de Finexa Plus:\n- Pago: ${debt.name}\n- Monto: ${formattedAmount}\n- Fecha límite: ${dueDate}\n- Detalle / Acreedor: ${debt.creditorOrNote || 'Personal'}\n- Estado: ${isPaid ? 'PAGADO' : 'PENDIENTE'}\n\n${
+      isPaid
+        ? 'Esta deuda fue pagada en Finexa Plus. No requiere más acciones.'
+        : 'Finexa Plus: hoy vence el pago de tu deuda. Recuerda marcarla como pagada en la aplicación.'
+    }`,
     start: {
       date: dueDate,
     },
     end: {
       date: dueDate,
     },
-    colorId: '11', // Rojo llamativo para deudas
-    reminders: {
-      useDefault: false,
-      overrides: [
-        { method: 'popup', minutes: 24 * 60 }, // 1 día antes
-        { method: 'popup', minutes: 60 * 9 },  // Mañana del día de vencimiento (9am)
-      ],
-    },
+    colorId: isPaid ? '10' : '11', // Verde si ya se pagó, Rojo si está pendiente
+    reminders: isPaid
+      ? { useDefault: false, overrides: [] }
+      : {
+          useDefault: false,
+          overrides: [
+            { method: 'popup', minutes: advanceMinutes }, // Dos días antes (configurable)
+            { method: 'popup', minutes: 24 * 60 },        // Un día antes
+            { method: 'popup', minutes: 60 * 9 },         // El mismo día a las 9am
+          ],
+        },
   };
 
+  // Si ya existía un evento registrado, actualizarlo para evitar duplicados
+  if (debt.calendarEventId) {
+    try {
+      const updated = await updateGoogleCalendarEvent(accessToken, debt.calendarEventId, eventPayload);
+      return updated;
+    } catch (e) {
+      console.warn('No se pudo actualizar evento existente en Google Calendar, creando nuevo...', e);
+    }
+  }
+
   return createGoogleCalendarEvent(accessToken, eventPayload);
+}
+
+/**
+ * Elimina o desactiva los recordatorios en Google Calendar cuando una deuda es marcada como pagada
+ */
+export async function cancelDebtReminderFromGoogle(
+  accessToken: string,
+  debt: DebtItem
+): Promise<boolean> {
+  if (!debt.calendarEventId) return true;
+  try {
+    return await deleteGoogleCalendarEvent(accessToken, debt.calendarEventId);
+  } catch (err) {
+    console.warn('Error cancelando evento de Google Calendar:', err);
+    return false;
+  }
 }
 
 /**
@@ -268,7 +310,7 @@ export async function syncSubscriptionReminderToGoogle(
 
   const eventPayload: CalendarEventPayload = {
     summary: `🔄 Cobro Recurrente: ${sub.name} (${formattedAmount})`,
-    description: `Servicio recurrente en Finexa:\n- Servicio: ${sub.name}\n- Categoría: ${sub.category}\n- Monto: ${formattedAmount}\n- Ciclo: ${sub.billingCycle}\n- Día de cobro: día ${sub.billingDay}\n\nRegistrado automáticamente desde Finexa.`,
+    description: `Servicio recurrente en Finexa Plus:\n- Servicio: ${sub.name}\n- Categoría: ${sub.category}\n- Monto: ${formattedAmount}\n- Ciclo: ${sub.billingCycle}\n- Día de cobro: día ${sub.billingDay}\n\nRegistrado automáticamente desde Finexa Plus.`,
     start: {
       date: dateStr,
     },
@@ -280,11 +322,20 @@ export async function syncSubscriptionReminderToGoogle(
     reminders: {
       useDefault: false,
       overrides: [
+        { method: 'popup', minutes: (sub.reminderDaysBefore || 2) * 24 * 60 },
         { method: 'popup', minutes: 24 * 60 },
-        { method: 'popup', minutes: 120 },
+        { method: 'popup', minutes: 60 * 9 },
       ],
     },
   };
+
+  if (sub.calendarEventId) {
+    try {
+      return await updateGoogleCalendarEvent(accessToken, sub.calendarEventId, eventPayload);
+    } catch {
+      // Fallback a crear nuevo si no se encuentra
+    }
+  }
 
   return createGoogleCalendarEvent(accessToken, eventPayload);
 }

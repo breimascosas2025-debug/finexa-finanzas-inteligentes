@@ -13,7 +13,7 @@ import {
   sendPasswordResetViaEmailJS,
 } from '../utils/authStorage';
 import { saveUserProfileToStorage, loadUserProfileFromStorage } from '../utils/userStorage';
-import { authenticateWithPasskey, isPasskeySupported } from '../services/webauthnService';
+import { authenticateWithPasskey, isPasskeySupported, getKnownPasskeyUsers } from '../services/webauthnService';
 
 interface LoginViewProps {
   onLoginSuccess: (user: UserProfile) => void;
@@ -58,7 +58,8 @@ type AuthViewMode =
   | 'apple_dialog'
   | 'otp_verify'
   | 'forgot_password'
-  | 'reset_password_token';
+  | 'reset_password_token'
+  | 'passkey_select';
 
 export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess }) => {
   // Authentication view mode
@@ -564,33 +565,57 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess }) => {
     }, 2000);
   };
 
-  // Manejar inicio de sesión con Passkey (WebAuthn)
-  const handlePasskeySignIn = async () => {
-    setOtpError('');
+  const [passkeyEmailInput, setPasskeyEmailInput] = useState(() => {
     try {
       const lastUser = localStorage.getItem('finexa_user');
-      let targetEmail = '';
-      if (lastUser) {
-        try {
-          targetEmail = JSON.parse(lastUser).email;
-        } catch {}
-      }
-      if (!targetEmail) {
-        const inputMail = prompt('Ingresa tu correo electrónico asociado a la Passkey:');
-        if (!inputMail) return;
-        targetEmail = inputMail.trim().toLowerCase();
-      }
+      return lastUser ? JSON.parse(lastUser).email || '' : '';
+    } catch {
+      return '';
+    }
+  });
+  const [knownPasskeyAccounts, setKnownPasskeyAccounts] = useState<Array<{ email: string; passkeysCount: number; lastUsed?: string }>>([]);
 
-      await authenticateWithPasskey(targetEmail);
-      const profile = loadUserProfileFromStorage(targetEmail) || {
-        name: targetEmail.split('@')[0],
-        email: targetEmail,
-        avatarUrl: '💼',
-      };
-      onLoginSuccess(profile);
-    } catch (err: any) {
-      console.warn('Error en Passkey sign-in:', err);
-      setOtpError(err.message || 'No se pudo autenticar con Passkey en este dispositivo.');
+  // Manejar inicio de sesión con Passkey (WebAuthn)
+  const handlePasskeySignIn = async (customEmail?: string) => {
+    setOtpError('');
+    const targetEmail = (customEmail || passkeyEmailInput || '').trim().toLowerCase();
+
+    if (targetEmail) {
+      try {
+        await authenticateWithPasskey(targetEmail);
+        const profile = loadUserProfileFromStorage(targetEmail) || {
+          name: targetEmail.split('@')[0],
+          email: targetEmail,
+          avatarUrl: '💼',
+        };
+        onLoginSuccess(profile);
+        return;
+      } catch (err: any) {
+        console.warn('Error en Passkey sign-in:', err);
+        setOtpError(err.message || 'No se pudo autenticar con Passkey en este dispositivo.');
+        setAuthMethod('passkey_select');
+        return;
+      }
+    }
+
+    const known = getKnownPasskeyUsers();
+    setKnownPasskeyAccounts(known);
+
+    if (known.length === 1) {
+      try {
+        await authenticateWithPasskey(known[0].email);
+        const profile = loadUserProfileFromStorage(known[0].email) || {
+          name: known[0].email.split('@')[0],
+          email: known[0].email,
+          avatarUrl: '💼',
+        };
+        onLoginSuccess(profile);
+      } catch (err: any) {
+        setOtpError(err.message || 'Error al autenticar Passkey.');
+        setAuthMethod('passkey_select');
+      }
+    } else {
+      setAuthMethod('passkey_select');
     }
   };
 
@@ -723,6 +748,77 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess }) => {
                 <span>Iniciar con Passkey (Huella / Rostro / PIN)</span>
               </button>
             )}
+          </div>
+        )}
+
+        {/* VISTA PASSKEY: SELECCIONAR O INGRESAR CUENTA PARA PASSEKY */}
+        {authMethod === 'passkey_select' && (
+          <div className="space-y-4 bg-[#181c24] p-4 rounded-3xl border border-[#10b981]/50 shadow-xl animate-in fade-in">
+            <div className="flex items-center justify-between border-b border-[#3c4a42]/40 pb-2.5">
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setAuthMethod('options')}
+                  className="w-7 h-7 rounded-full bg-[#262a33] text-[#dfe2ee] hover:bg-[#31353e] flex items-center justify-center transition-colors"
+                >
+                  <span className="material-symbols-outlined text-[16px]">arrow_back</span>
+                </button>
+                <h3 className="text-xs font-bold text-white">Autenticación con Passkey</h3>
+              </div>
+              <span className="material-symbols-outlined text-[#10b981] text-[20px]">fingerprint</span>
+            </div>
+
+            <p className="text-[11px] text-[#86948a]">
+              Usa la biometría o el método seguro de tu dispositivo (Face ID, Huella o PIN). No necesitas escribir contraseñas.
+            </p>
+
+            {knownPasskeyAccounts.length > 0 && (
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-bold text-[#86948a] uppercase tracking-wider block">
+                  Cuentas detectadas en este dispositivo:
+                </label>
+                <div className="space-y-1.5 max-h-36 overflow-y-auto">
+                  {knownPasskeyAccounts.map((item) => (
+                    <button
+                      key={item.email}
+                      type="button"
+                      onClick={() => handlePasskeySignIn(item.email)}
+                      className="w-full p-2.5 rounded-xl bg-[#0f131c] hover:bg-[#252c3a] border border-[#3c4a42]/50 hover:border-[#10b981] text-left flex items-center justify-between transition-all"
+                    >
+                      <div className="flex items-center gap-2 truncate">
+                        <span className="material-symbols-outlined text-[#10b981] text-[18px]">key</span>
+                        <span className="text-xs font-semibold text-white truncate">{item.email}</span>
+                      </div>
+                      <span className="text-[9px] text-[#86948a] shrink-0 font-bold bg-[#262a33] px-1.5 py-0.5 rounded">
+                        {item.passkeysCount} passkey(s)
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <div className="space-y-2 pt-1 border-t border-[#3c4a42]/30">
+              <label className="text-[10px] font-bold text-[#86948a] block">
+                O ingresa el correo de tu cuenta:
+              </label>
+              <div className="flex gap-2">
+                <input
+                  type="email"
+                  value={passkeyEmailInput}
+                  onChange={(e) => setPasskeyEmailInput(e.target.value)}
+                  placeholder="tu@correo.com"
+                  className="flex-1 bg-[#0f131c] border border-[#3c4a42] rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-[#10b981]"
+                />
+                <button
+                  type="button"
+                  onClick={() => handlePasskeySignIn(passkeyEmailInput)}
+                  className="px-4 py-2 rounded-xl bg-[#10b981] text-[#003824] font-black text-xs active:scale-95 transition-all shadow"
+                >
+                  Acceder
+                </button>
+              </div>
+            </div>
           </div>
         )}
 

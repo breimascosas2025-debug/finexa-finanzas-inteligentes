@@ -36,6 +36,47 @@ export function isPasskeySupported(): boolean {
   );
 }
 
+// Verifica si el dispositivo cuenta con autenticador de plataforma (Touch ID, Face ID, Windows Hello, Huella Android)
+export async function isPlatformAuthenticatorAvailable(): Promise<boolean> {
+  if (!isPasskeySupported()) return false;
+  try {
+    if (typeof window.PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable === 'function') {
+      return await window.PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable();
+    }
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+// Lista de correos y usuarios con Passkeys registradas en este dispositivo
+export function getKnownPasskeyUsers(): Array<{ email: string; passkeysCount: number; lastUsed?: string }> {
+  if (typeof localStorage === 'undefined') return [];
+  const results: Array<{ email: string; passkeysCount: number; lastUsed?: string }> = [];
+
+  for (let i = 0; i < localStorage.length; i++) {
+    const key = localStorage.key(i);
+    if (key && key.startsWith('finexa_passkeys_')) {
+      const email = key.replace('finexa_passkeys_', '');
+      try {
+        const passkeys: PasskeyCredential[] = JSON.parse(localStorage.getItem(key) || '[]');
+        if (Array.isArray(passkeys) && passkeys.length > 0) {
+          const sorted = [...passkeys].sort((a, b) => 
+            new Date(b.lastUsedAt || b.createdAt).getTime() - new Date(a.lastUsedAt || a.createdAt).getTime()
+          );
+          results.push({
+            email,
+            passkeysCount: passkeys.length,
+            lastUsed: sorted[0]?.lastUsedAt || sorted[0]?.createdAt,
+          });
+        }
+      } catch {}
+    }
+  }
+
+  return results;
+}
+
 // Detecta el nombre legible del dispositivo
 function getDeviceName(): string {
   const ua = navigator.userAgent;
@@ -186,6 +227,48 @@ export async function authenticateWithPasskey(userEmail: string): Promise<boolea
   localStorage.setItem(`finexa_passkeys_${userEmail}`, JSON.stringify(updated));
 
   return true;
+}
+
+/**
+ * Verificación biométrica / Passkey para desbloquear la aplicación localmente
+ */
+export async function verifyBiometricUnlock(userEmail: string): Promise<boolean> {
+  const passkeys = getStoredPasskeys(userEmail);
+  if (passkeys.length > 0) {
+    return await authenticateWithPasskey(userEmail);
+  }
+
+  // Si no hay passkey registrada en este dispositivo, intentar desafío con autenticador de plataforma
+  if (isPasskeySupported()) {
+    try {
+      const challenge = new Uint8Array(32);
+      window.crypto.getRandomValues(challenge);
+      const encoder = new TextEncoder();
+      const userId = encoder.encode(userEmail || 'finexa_lock');
+
+      const credential = await navigator.credentials.create({
+        publicKey: {
+          challenge,
+          rp: { name: 'Finexa Seguridad', id: window.location.hostname },
+          user: { id: userId, name: userEmail || 'user', displayName: 'Usuario Finexa' },
+          pubKeyCredParams: [{ alg: -7, type: 'public-key' }, { alg: -257, type: 'public-key' }],
+          authenticatorSelection: {
+            authenticatorAttachment: 'platform',
+            userVerification: 'required',
+          },
+          timeout: 45000,
+        },
+      });
+      return !!credential;
+    } catch (err: any) {
+      if (err.name === 'NotAllowedError') {
+        throw new Error('Autenticación biométrica cancelada o no autorizada.');
+      }
+      throw new Error(err.message || 'Error al validar biometría en el dispositivo.');
+    }
+  }
+
+  throw new Error('Biometría no disponible en este dispositivo. Usa tu PIN de 4 dígitos.');
 }
 
 export function getStoredPasskeys(userEmail: string): PasskeyCredential[] {
